@@ -7,7 +7,7 @@ The Forward-Forward algorithm [1] evaluated on the MNIST handwritten digit recog
 References:
 -----------
 [1] [The Forward-Forward Algorithm: Some Preliminary Investigations, Geoffrey Hinton, NeurIPS 2022](https://www.cs.toronto.edu/~hinton/FFA13.pdf) <br/>
-[2] [Hinton's matlab implementation](https://www.cs.toronto.edu/~hinton/ffcode.zip) <br/>
+[2] [Hinton's matlab code](https://www.cs.toronto.edu/~hinton/ffcode.zip) <br/>
 [3] [mnistdata.mat](https://www.cs.toronto.edu/~hinton/mnistdata.mat) <br/>
 
 Run:

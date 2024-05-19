@@ -1,5 +1,4 @@
 import numpy as np
-import random
 import scipy.io
 import collections
 from scipy.special import expit
@@ -19,20 +18,14 @@ def logistic(x):
 def choosefrom(probs):
     numcases, nlab = probs.shape
     postchoiceprobs = np.zeros_like(probs, dtype=dtype)
-
     for n in range(numcases):
         r = np.random.rand(1)
-        #r = random.random()
-        used = 0
-        sumsofar = 0
-
+        sumsofar = 0.0
         for lab in range(nlab):
             sumsofar += probs[n, lab]
-            if r < sumsofar and used == 0:
-                used = 1
-                postchoiceprobs[n, lab] = 1
+            if r < sumsofar :
+                postchoiceprobs[n, lab] = 1.0
                 break
-
     return postchoiceprobs
 
 def softmax(scores):
