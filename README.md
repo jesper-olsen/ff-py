@@ -201,7 +201,7 @@ suprms:  [0.01410813484921783, 0.016608840118146413]
 Energy-based errs: Train 0/10000 Test 134/10000
 Softmax-based errs: Train 0/10000 Test 142/10000
 
-real	111m49.315s
-user	752m57.285s
-sys	48m21.001s
+real	104m48.890s
+user	702m38.693s
+sys	45m18.787s
 ```
