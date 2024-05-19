@@ -102,6 +102,13 @@ def ffsoftmaxtest(batchdata, batchtargets, maxbatches):
         tests += len(guesses)
     return errors, tests
 
+def calc_epsgain(epoch, MAXEPOCH):
+    #  multiplier on all weight changes - decays linearly to zero after MAXEPOCH/2
+    if epoch < MAXEPOCH / 2:
+        return 1.0
+    else:
+        return (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH
+    
 np.random.seed(17)
 
 mnist_data = scipy.io.loadmat("mnistdata.mat")
@@ -136,7 +143,6 @@ supwc = 0.003  # weightcost on label prediction weights.
 epsilon = 0.01  # learning rate for forward weights.
 epsilonsup = 0.1  # learning rate for linear softmax weights.
 
-epsgain = 1  #  multiplier on all weight changes - decays linearly after MAXEPOCH/2
 delay = 0.9  #  used for smoothing the gradient over minibatches. 0.9 = 1 - 0.1
 
 normstates = [None] * NLAYERS
@@ -151,8 +157,8 @@ negdCbydbiases = [None] * NLAYERS
 weightsgrad = [None] * NLAYERS  # The gradients for the weights smoothed over minibatches.
 biasesgrad = [None] * NLAYERS
 
+# meanstates - running average of the mean activity of a hidden unit.
 meanstates = {l: 0.5 * np.ones(LAYERS[l], dtype=dtype) for l in range(1,NLAYERS-1)}
-# initialize the running average of the mean activity of a hidden unit.
 
 #weights[l] = np.loadtxt("random_numbers_layer%d.csv" % (l + 1), delimiter=",")
 weights = {l: (1/np.sqrt(LAYERS[l-1]))*np.random.randn(LAYERS[l-1], LAYERS[l])  for l in range(1,NLAYERS)}
@@ -168,25 +174,17 @@ for l in range(1, NLAYERS):
     weightsgrad[l] = np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=dtype)
     biasesgrad[l] = np.zeros((1, LAYERS[l]), dtype=dtype)
 
-supweightsfrom = [None] * (NLAYERS)  # the weights used for predicting the label from the higher hidden layer activities.
-supweightsfromgrad = [None] * (NLAYERS)  # the smoothed gradients.
-for l in range(minlevelsup, NLAYERS - 1):
-    supweightsfrom[l] = np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype)
-    supweightsfromgrad[l] = np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype)
+# the weights used for predicting the label from the higher hidden layer activities.
+supweightsfrom = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype) for l in range(1,NLAYERS)}
+supweightsfromgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype) for l in range(1,NLAYERS)}
 
 print("nums per layer: ", LAYERS)
-
 MAXEPOCH = 100
 for epoch in range(0, MAXEPOCH):
     # number of times an image with an incorrect label has higher goodness than the image with the correct label.
     pairsumerrs = collections.defaultdict(int)
     trainlogcost = 0.0
-
-    if epoch < MAXEPOCH / 2:
-        epsgain = 1.0
-    else:
-        epsgain = (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH
-    # The learning rate remains constant for the first half of the allotted epochs then declines linearly to zero.
+    epsgain = calc_epsgain(epoch, MAXEPOCH)
 
     np.set_printoptions(threshold=np.inf)
     for batch in range(numbatches):
@@ -198,24 +196,21 @@ for epoch in range(0, MAXEPOCH):
         for l in range(1, NLAYERS - 1):
             totin = np.dot(normstates[l - 1], weights[l]) + biases[l]
             states = np.maximum(0, totin)  # RELU
-            posprobs[l] = logistic(
-                (np.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / temp
-            )
+            posprobs[l] = logistic( (np.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / temp )
 
             replicated_states = np.repeat(1-posprobs[l], LAYERS[l]).reshape(-1, LAYERS[l])
             # gradients of goodness w.r.t. total input to a hidden unit.
             dCbydin = replicated_states * states  # Element-wise multiplication
             # wrong sign: rate at which it gets BETTER not worse. Think of C as goodness.
+
             meanstates[l] = 0.9 * meanstates[l] + 0.1 * np.mean(states[l])  # Element-wise operations
             mean_meanstates = np.mean(meanstates[l])
             dCbydin = dCbydin + lambdamean * (mean_meanstates - meanstates[l])  
-
             # This is a regularizer that encourages the average activity of a unit to match that for
             # all the units in the layer. Notice that we do not gate by (states>0) for this extra term.
             # This allows the extra term to revive units that are always off.  May not be needed.
 
             normstates[l] = ffnormrows(states)
-
             posdCbydweights[l] = np.dot(normstates[l - 1].T, dCbydin)
             posdCbydbiases[l] = np.sum(dCbydin, axis=0)
 
@@ -241,9 +236,7 @@ for epoch in range(0, MAXEPOCH):
         labin -= np.tile(max_labin, (1, LAYERS[-1]))
         unnormlabprobs = np.exp(labin)
         sum_unnormlabprobs = np.sum(unnormlabprobs, axis=1, keepdims=True)
-        trainpredictions = unnormlabprobs / np.tile(
-            sum_unnormlabprobs, (1, LAYERS[-1])
-        )
+        trainpredictions = unnormlabprobs / np.tile( sum_unnormlabprobs, (1, LAYERS[-1]) )
         correctprobs = np.sum(trainpredictions * targets, axis=1)
         thistrainlogcosts = -np.log(tiny + correctprobs)
         trainlogcost += np.sum(thistrainlogcosts) / numbatches
@@ -258,34 +251,26 @@ for epoch in range(0, MAXEPOCH):
 
         for l in range(minlevelsup, NLAYERS - 1):
             dCbydsupweightsfrom = np.dot(normstates[l].T, dCbydin)
-            supweightsfromgrad[l] = (
-                delay * supweightsfromgrad[l]
-                + (1 - delay) * dCbydsupweightsfrom / numcases
-            )
-            supweightsfrom[l] = supweightsfrom[l] + epsgain * epsilonsup * (
-                supweightsfromgrad[l] - supwc * supweightsfrom[l]
-            )
+            supweightsfromgrad[l] = \
+                delay * supweightsfromgrad[l] + (1 - delay) * dCbydsupweightsfrom / numcases
+            supweightsfrom[l] = supweightsfrom[l] + epsgain * epsilonsup * \
+                (supweightsfromgrad[l] - supwc * supweightsfrom[l])
 
         # HACK: it works better without predicting the label from the first hidden layer.
 
         # NOW WE MAKE NEGDATA
         negdata = data
-
         labinothers = (labin - 1000 * targets)  # big negative logits for the targets so we do not choose them
-
         softmax_labinothers = softmax(labinothers)
         chosen_labels = choosefrom(softmax_labinothers)
         negdata[:, :NUMLAB] = labelstrength * chosen_labels
-
         normstates[0] = ffnormrows(negdata)
-
         for l in range(1, NLAYERS - 1):
             totin = np.dot(normstates[l - 1], weights[l]) + biases[l]
             states = np.maximum(0, totin)
             sum_states_l_squared = np.sum(states**2, axis=1, keepdims=True)
-            negprobs[l] = logistic(
-                (sum_states_l_squared - LAYERS[l]) / temp
-            )  # probability of saying a negative case is POSITIVE.
+            # negprobs - probability of saying a negative case is POSITIVE.
+            negprobs[l] = logistic( (sum_states_l_squared - LAYERS[l]) / temp)  
             dCbydin = -np.tile(negprobs[l], (1, LAYERS[l])) * states
             negdCbydweights[l] = np.dot(normstates[l - 1].T, dCbydin)
             negdCbydbiases[l] = np.sum(dCbydin, axis=0)
@@ -293,65 +278,39 @@ for epoch in range(0, MAXEPOCH):
             normstates[l] = ffnormrows(states)
 
         for l in range(1, NLAYERS - 1):
-            weightsgrad[l] = (
-                delay * weightsgrad[l]
-                + (1 - delay) * (posdCbydweights[l] + negdCbydweights[l]) / numcases
-            )
-            biasesgrad[l] = (
-                delay * biasesgrad[l]
-                + (1 - delay) * (posdCbydbiases[l] + negdCbydbiases[l]) / numcases
-            )
+            weightsgrad[l] = \
+                delay * weightsgrad[l] + (1 - delay) * (posdCbydweights[l] + negdCbydweights[l]) / numcases
+            biasesgrad[l] = \
+                delay * biasesgrad[l] + (1 - delay) * (posdCbydbiases[l] + negdCbydbiases[l]) / numcases
             biases[l] = biases[l] + epsgain * epsilon * biasesgrad[l]
-            weights[l] = weights[l] + epsgain * epsilon * (
-                weightsgrad[l] - wc * weights[l]
-            )
+            weights[l] = weights[l] + epsgain * epsilon * (weightsgrad[l] - wc * weights[l])
 
             # Optionally, apply equicols(weights{l}) if equicols function is available
             # equicols makes the incoming weight vectors have the same L2 norm for all units in a layer.
             # weights{l} = equicols(weights{l})
 
     if True:
-        print(
-            f"ep {epoch:3} gain {epsgain:.3f} trainlogcost {trainlogcost:.4f} PairwiseErrs:",
-            end=" ",
-        )
-        for l in range(1, NLAYERS - 1):
-            print(f"{pairsumerrs[l]:4}", end=" ")
-        print()
+        print(f"ep {epoch:3} gain {epsgain:.3f} trainlogcost {trainlogcost:.4f} PairwiseErrs:",
+            [pairsumerrs[l] for l in range(1,NLAYERS-1)])
 
     if (epoch + 1) % 5 == 0:
         tr_errors, tr_tests = ffenergytest(
             mnist_data["batchdata"], mnist_data["batchtargets"], 100
         )
-        verrors, vtests = ffenergytest(
-            mnist_data["validbatchdata"], mnist_data["validbatchtargets"], 100
-        )
-        print(
-            f"Energy-based errs: Train {tr_errors}/{tr_tests} Valid {verrors}/{vtests}"
-        )
+        verrors, vtests = ffenergytest(mnist_data["validbatchdata"], mnist_data["validbatchtargets"], 100)
+        print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Valid {verrors}/{vtests}")
 
-        verrors, vtests = ffsoftmaxtest(
-            mnist_data["validbatchdata"], mnist_data["validbatchtargets"], 100
-        )
+        verrors, vtests = ffsoftmaxtest(mnist_data["validbatchdata"], mnist_data["validbatchtargets"], 100)
         print(f"Softmax-based errs: Valid {verrors}/{vtests}")
 
     if (epoch + 1) % 5 == 0:
         print("rms: ", [rms(weights[l]) for l in range(1, NLAYERS - 1)])
-        print(
-            "suprms: ",
-            [rms(supweightsfrom[l]) for l in range(minlevelsup, NLAYERS - 1)],
-        )
+        print("suprms: ", [rms(supweightsfrom[l]) for l in range(minlevelsup, NLAYERS - 1)])
         # the magnitudes of the sup weights show how much each hidden layer contributes to the softmax.
 
-tr_errors, tr_tests = ffenergytest(
-    mnist_data["batchdata"], mnist_data["batchtargets"], 100
-)
-te_errors, te_tests = ffenergytest(
-    mnist_data["finaltestbatchdata"], mnist_data["finaltestbatchtargets"], 100
-)
+tr_errors, tr_tests = ffenergytest(mnist_data["batchdata"], mnist_data["batchtargets"], 100)
+te_errors, te_tests = ffenergytest(mnist_data["finaltestbatchdata"], mnist_data["finaltestbatchtargets"], 100)
 print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
 
-te_errors, te_tests = ffsoftmaxtest(
-    mnist_data["finaltestbatchdata"], mnist_data["finaltestbatchtargets"], 100
-)
+te_errors, te_tests = ffsoftmaxtest(mnist_data["finaltestbatchdata"], mnist_data["finaltestbatchtargets"], 100)
 print(f"Softmax-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
