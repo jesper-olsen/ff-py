@@ -85,7 +85,7 @@ def ffsoftmaxtest(batchdata, batchtargets, maxbatches):
             states = np.maximum(0, normstates[l - 1] @ weights[l] + biases[l])
             normstates[l] = ffnormrows(states)
 
-        labin = np.tile(biases[-1], (numcases, 1))
+        labin = np.tile(biases[NLAYERS-1], (numcases, 1))
         for l in range(minlevelsup, NLAYERS - 1):
             labin += normstates[l] @ supweightsfrom[l]
 
@@ -140,8 +140,6 @@ epsgain = 1  #  multiplier on all weight changes - decays linearly after MAXEPOC
 delay = 0.9  #  used for smoothing the gradient over minibatches. 0.9 = 1 - 0.1
 
 normstates = [None] * NLAYERS
-weights = [None] * NLAYERS  # the forward weights. weights[2] is incoming weights to layer 2.
-biases = [None] * NLAYERS
 
 posprobs = [None] * NLAYERS  # column vector of probs that positive cases are positive.
 negprobs = [None] * NLAYERS  # column vector of probs that negative cases are POSITIVE.
@@ -152,17 +150,17 @@ posdCbydbiases = [None] * NLAYERS
 negdCbydbiases = [None] * NLAYERS
 weightsgrad = [None] * NLAYERS  # The gradients for the weights smoothed over minibatches.
 biasesgrad = [None] * NLAYERS
-meanstates = [None] * NLAYERS
 
-for l in range(1, NLAYERS - 1):
-    meanstates[l] = 0.5 * np.ones(LAYERS[l], dtype=dtype)
-    # initialize the running average of the mean activity of a hidden unit.
+meanstates = {l: 0.5 * np.ones(LAYERS[l], dtype=dtype) for l in range(1,NLAYERS-1)}
+# initialize the running average of the mean activity of a hidden unit.
+
+#weights[l] = np.loadtxt("random_numbers_layer%d.csv" % (l + 1), delimiter=",")
+weights = {l: (1/np.sqrt(LAYERS[l-1]))*np.random.randn(LAYERS[l-1], LAYERS[l])  for l in range(1,NLAYERS)}
+# the forward weights - scaled by sqrt(fanin). weights[2] is incoming weights to layer 2.
+
+biases = {l: 0.0 * np.ones(LAYERS[l],dtype=dtype) for l in range(1,NLAYERS)}
 
 for l in range(1, NLAYERS):
-    weights[l] = (1/np.sqrt(LAYERS[l-1]))*np.random.randn(LAYERS[l-1], LAYERS[l]) #scales initial weights by sqrt(fanin).
-    #weights[l] = np.loadtxt("random_numbers_layer%d.csv" % (l + 1), delimiter=",")
-
-    biases[l] = 0.0 * np.ones(LAYERS[l],dtype=dtype)
     posdCbydweights[l] = np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=dtype)
     negdCbydweights[l] = np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=dtype)
     posdCbydbiases[l] = np.zeros((1, LAYERS[l]), dtype=dtype)
@@ -234,7 +232,7 @@ for epoch in range(0, MAXEPOCH):
             states = np.maximum(0, totin)  # RELU
             normstates[l] = ffnormrows(states)
 
-        labin = np.tile(biases[-1], (numcases, 1))
+        labin = np.tile(biases[NLAYERS-1], (numcases, 1))
         for l in range(minlevelsup, NLAYERS - 1):
             labin += np.dot(normstates[l], supweightsfrom[l])
             # normstates seems to work better than states for predicting the label
