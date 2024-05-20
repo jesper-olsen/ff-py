@@ -9,8 +9,7 @@ dtype=np.float64
 def ffnormrows(a):
     # Makes every 'a' have a sum of squared activities that averages 1 per neuron.
     num_comp = a.shape[1]
-    normaliseda = ( a / (tiny + np.sqrt(np.mean(a**2, axis=1, keepdims=True))) * np.ones((num_comp), dtype=dtype))
-    return normaliseda
+    return ( a / (tiny + np.sqrt(np.mean(a**2, axis=1, keepdims=True))) * np.ones((num_comp), dtype=dtype))
 
 def logistic(x):
     return expit(x)
@@ -30,8 +29,7 @@ def choosefrom(probs):
 
 def softmax(scores):
     exp_scores = np.exp(scores)
-    probabilities = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
-    return probabilities
+    return  exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
 
 def equicols(matrix):
     norms = np.linalg.norm(matrix, axis=0)  # Calculate L2 norms of each column
@@ -42,8 +40,7 @@ def rms(x):
     return np.sqrt(np.sum(x**2) / (x.size))
 
 def ffenergytest(batchdata, batchtargets, maxbatches):
-    errors = 0
-    tests = 0
+    errors = tests = 0
     # numcases=100
     for batch in range(maxbatches):
         data = batchdata[:, :, batch]
@@ -72,8 +69,7 @@ def ffenergytest(batchdata, batchtargets, maxbatches):
     return errors, tests
 
 def ffsoftmaxtest(batchdata, batchtargets, maxbatches):
-    errors = 0
-    tests = 0
+    errors = tests = 0
     # numcases=100
     for batch in range(maxbatches):
         data = batchdata[:, :, batch]
@@ -144,29 +140,24 @@ normstates = [None] * NLAYERS
 posprobs = [None] * NLAYERS  # column vector of probs that positive cases are positive.
 negprobs = [None] * NLAYERS  # column vector of probs that negative cases are POSITIVE.
 
-posdCbydweights = [None] * NLAYERS  # gradients of probability of correct real/fake decision w.r.t. weights.
-negdCbydweights = [None] * NLAYERS  # gradients on negative cases.
-posdCbydbiases = [None] * NLAYERS
-negdCbydbiases = [None] * NLAYERS
-weightsgrad = [None] * NLAYERS  # The gradients for the weights smoothed over minibatches.
-biasesgrad = [None] * NLAYERS
-
 # meanstates - running average of the mean activity of a hidden unit.
 meanstates = {l: 0.5 * np.ones(LAYERS[l], dtype=dtype) for l in range(1,NLAYERS-1)}
 
-#weights[l] = np.loadtxt("random_numbers_layer%d.csv" % (l + 1), delimiter=",")
-weights = {l: (1/np.sqrt(LAYERS[l-1]))*np.random.randn(LAYERS[l-1], LAYERS[l])  for l in range(1,NLAYERS)}
 # the forward weights - scaled by sqrt(fanin). weights[2] is incoming weights to layer 2.
+weights = {l: (1/np.sqrt(LAYERS[l-1]))*np.random.randn(LAYERS[l-1], LAYERS[l])  for l in range(1,NLAYERS)}
+#weights[l] = np.loadtxt("random_numbers_layer%d.csv" % (l + 1), delimiter=",")
 
 biases = {l: 0.0 * np.ones(LAYERS[l],dtype=dtype) for l in range(1,NLAYERS)}
 
-for l in range(1, NLAYERS):
-    posdCbydweights[l] = np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=dtype)
-    negdCbydweights[l] = np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=dtype)
-    posdCbydbiases[l] = np.zeros((1, LAYERS[l]), dtype=dtype)
-    negdCbydbiases[l] = np.zeros((1, LAYERS[l]), dtype=dtype)
-    weightsgrad[l] = np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=dtype)
-    biasesgrad[l] = np.zeros((1, LAYERS[l]), dtype=dtype)
+#gradients are smoothed over minibatches
+
+# gradients of probability of correct real/fake decision w.r.t. weights & biases
+posdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=dtype) for l in range(1,NLAYERS-1)}
+negdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=dtype) for l in range(1,NLAYERS-1)}
+posdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=dtype) for l in range(1,NLAYERS-1)}
+negdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=dtype) for l in range(1,NLAYERS-1)}
+weightsgrad = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=dtype) for l in range(1,NLAYERS-1)}
+biasesgrad = {l: np.zeros((1, LAYERS[l]), dtype=dtype) for l in range(1,NLAYERS-1)}
 
 # the weights used for predicting the label from the higher hidden layer activities.
 supweightsfrom = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype) for l in range(1,NLAYERS-1)}
@@ -184,7 +175,7 @@ for epoch in range(0, MAXEPOCH):
     for batch in range(numbatches):
         data = mnist_data["batchdata"][:, :, batch]  # 100x784
         targets = mnist_data["batchtargets"][:, :, batch]
-        data[:, :10] = labelstrength * targets
+        data[:, :NUMLAB] = labelstrength * targets
         normstates[0] = ffnormrows(data)
 
         for l in range(1, NLAYERS - 1):
@@ -288,12 +279,9 @@ for epoch in range(0, MAXEPOCH):
             [pairsumerrs[l] for l in range(1,NLAYERS-1)])
 
     if (epoch + 1) % 5 == 0:
-        tr_errors, tr_tests = ffenergytest(
-            mnist_data["batchdata"], mnist_data["batchtargets"], 100
-        )
+        tr_errors, tr_tests = ffenergytest(mnist_data["batchdata"], mnist_data["batchtargets"], 100)
         verrors, vtests = ffenergytest(mnist_data["validbatchdata"], mnist_data["validbatchtargets"], 100)
         print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Valid {verrors}/{vtests}")
-
         verrors, vtests = ffsoftmaxtest(mnist_data["validbatchdata"], mnist_data["validbatchtargets"], 100)
         print(f"Softmax-based errs: Valid {verrors}/{vtests}")
 
