@@ -131,22 +131,16 @@ lambdamean = 0.03
 # Choose strength of regression (lambdamean) so that average activities are similar but not too similar.
 
 temp = 1  # rescales the logits used for deciding fake vs real
-labelstrength = (
-    1.0  # scaling up the activity of the label pixel doesn't seem to help much.
-)
+labelstrength = 1.0  # scaling up the activity of the label pixel doesn't seem to help much.
 minlevelsup = 2  # used in training softmax predictor. Does not use hidden layers lower than this.
 minlevelenergy = 2  # used in computing goodness at test time. Does not use hidden layers lower than this.
-
 wc = 0.001 # weightcost on forward weights.
 supwc = 0.003  # weightcost on label prediction weights.
-
 epsilon = 0.01  # learning rate for forward weights.
 epsilonsup = 0.1  # learning rate for linear softmax weights.
-
 delay = 0.9  #  used for smoothing the gradient over minibatches. 0.9 = 1 - 0.1
 
 normstates = [None] * NLAYERS
-
 posprobs = [None] * NLAYERS  # column vector of probs that positive cases are positive.
 negprobs = [None] * NLAYERS  # column vector of probs that negative cases are POSITIVE.
 
@@ -175,8 +169,8 @@ for l in range(1, NLAYERS):
     biasesgrad[l] = np.zeros((1, LAYERS[l]), dtype=dtype)
 
 # the weights used for predicting the label from the higher hidden layer activities.
-supweightsfrom = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype) for l in range(1,NLAYERS)}
-supweightsfromgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype) for l in range(1,NLAYERS)}
+supweightsfrom = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype) for l in range(1,NLAYERS-1)}
+supweightsfromgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype) for l in range(1,NLAYERS-1)}
 
 print("nums per layer: ", LAYERS)
 MAXEPOCH = 100
