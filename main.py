@@ -1,7 +1,7 @@
+import collections
 import numpy as np
 import scipy.io
-import collections
-from scipy.special import expit
+from scipy.special import expit as logistic # 1/(1+exp(-x))
 
 tiny = np.exp(-50)  # for preventing divisions by zero
 dtype=np.float64
@@ -11,20 +11,14 @@ def ffnormrows(a):
     num_comp = a.shape[1]
     return ( a / (tiny + np.sqrt(np.mean(a**2, axis=1, keepdims=True))) * np.ones((num_comp), dtype=dtype))
 
-def logistic(x):
-    return expit(x)
-
 def choosefrom(probs):
+    """vectorized - probablistically choose neg examples that are more like the targets"""
     numcases, nlab = probs.shape
+    random_values = np.random.rand(numcases, 1)
+    cumulative_probs = np.cumsum(probs, axis=1)
+    chosen_labels = (random_values < cumulative_probs).argmax(axis=1)
     postchoiceprobs = np.zeros_like(probs, dtype=dtype)
-    for n in range(numcases):
-        r = np.random.rand(1)
-        sumsofar = 0.0
-        for lab in range(nlab):
-            sumsofar += probs[n, lab]
-            if r < sumsofar :
-                postchoiceprobs[n, lab] = 1.0
-                break
+    postchoiceprobs[np.arange(numcases), chosen_labels] = 1.0
     return postchoiceprobs
 
 def softmax(scores):
@@ -41,7 +35,6 @@ def rms(x):
 
 def ffenergytest(batchdata, batchtargets, maxbatches):
     errors = tests = 0
-    # numcases=100
     for batch in range(maxbatches):
         data = batchdata[:, :, batch]
         targets = batchtargets[:, :, batch]
@@ -56,7 +49,6 @@ def ffenergytest(batchdata, batchtargets, maxbatches):
                 states = np.maximum(0, normstates_lm1.dot(weights[l]) + biases[l])
                 if l >= minlevelenergy:
                     actsumsq[:, lab] += np.sum(states**2, axis=1)
-
                 normstates_lm1 = ffnormrows(states)
 
         score = np.max(actsumsq, axis=1)
@@ -70,7 +62,6 @@ def ffenergytest(batchdata, batchtargets, maxbatches):
 
 def ffsoftmaxtest(batchdata, batchtargets, maxbatches):
     errors = tests = 0
-    # numcases=100
     for batch in range(maxbatches):
         data = batchdata[:, :, batch]
         data[:, :NUMLAB] = labelstrength * np.ones((numcases, NUMLAB),dtype=dtype) / NUMLAB
@@ -112,7 +103,6 @@ mnist_data = scipy.io.loadmat("mnistdata.mat")
 #    if key in mnist_data and mnist_data[key].dtype!=dtype:
 #        mnist_data[key] = mnist_data[key].astype(dtype)
 
-MAXEPOCH = 100
 NUMLAB = 10
 
 numcases, numvis, numbatches = mnist_data["batchdata"].shape
@@ -163,10 +153,10 @@ biasesgrad = {l: np.zeros((1, LAYERS[l]), dtype=dtype) for l in range(1,NLAYERS-
 supweightsfrom = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype) for l in range(1,NLAYERS-1)}
 supweightsfromgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=dtype) for l in range(1,NLAYERS-1)}
 
-print("nums per layer: ", LAYERS)
+print("states per layer: ", LAYERS)
 MAXEPOCH = 100
 for epoch in range(0, MAXEPOCH):
-    # number of times an image with an incorrect label has higher goodness than the image with the correct label.
+    # number of times a negative example has higher goodness than the positive example
     pairsumerrs = collections.defaultdict(int)
     trainlogcost = 0.0
     epsgain = calc_epsgain(epoch, MAXEPOCH)
@@ -202,8 +192,7 @@ for epoch in range(0, MAXEPOCH):
         # NOW WE GET THE HIDDEN STATES WHEN THE LABEL IS NEUTRAL AND USE THE NORMALIZED HIDDEN STATES AS
         # INPUTS TO A SOFTMAX.  THIS SOFTMAX IS USED TO PICK HARD NEGATIVE LABELS
 
-        # dummy label in 1st 10 columns
-        ones_array = np.ones((numcases, LAYERS[-1]), dtype=dtype)
+        ones_array = np.ones((numcases, LAYERS[-1]), dtype=dtype) # dummy label in 1st 10 columns
         data[:, :NUMLAB] = labelstrength * ones_array[:, :NUMLAB] / LAYERS[-1]
         normstates[0] = ffnormrows(data)
 
@@ -240,7 +229,6 @@ for epoch in range(0, MAXEPOCH):
                 delay * supweightsfromgrad[l] + (1 - delay) * dCbydsupweightsfrom / numcases
             supweightsfrom[l] = supweightsfrom[l] + epsgain * epsilonsup * \
                 (supweightsfromgrad[l] - supwc * supweightsfrom[l])
-
         # HACK: it works better without predicting the label from the first hidden layer.
 
         # NOW WE MAKE NEGDATA
@@ -272,7 +260,7 @@ for epoch in range(0, MAXEPOCH):
 
             # Optionally, apply equicols(weights{l}) if equicols function is available
             # equicols makes the incoming weight vectors have the same L2 norm for all units in a layer.
-            # weights{l} = equicols(weights{l})
+            # weights[l] = equicols(weights[l])
 
     if True:
         print(f"ep {epoch:3} gain {epsgain:.3f} trainlogcost {trainlogcost:.4f} PairwiseErrs:",
