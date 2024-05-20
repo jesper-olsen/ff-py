@@ -204,5 +204,8 @@ Softmax-based errs: Train 0/10000 Test 142/10000
 real	92m10.458s
 user	638m45.931s
 sys	45m9.563s
+
+% sysctl -a | grep machdep.cpu
+machdep.cpu.core_count: 8
+machdep.cpu.brand_string: Apple M1
 ```
-MacbookAir M1
