@@ -212,10 +212,8 @@ for epoch in range(0, MAXEPOCH):
         sum_unnormlabprobs = np.sum(unnormlabprobs, axis=1, keepdims=True)
         trainpredictions = unnormlabprobs / np.tile( sum_unnormlabprobs, (1, LAYERS[-1]) )
         correctprobs = np.sum(trainpredictions * targets, axis=1)
-        thistrainlogcosts = -np.log(tiny + correctprobs)
-        trainlogcost += np.sum(thistrainlogcosts) / numbatches
+        trainlogcost += np.sum(-np.log(tiny+correctprobs))/numbatches # per batch (not per case)
 
-        # we print the log cost per batch (not per case).
         trainguesses = np.argmax(trainpredictions, axis=1)
         targetindices = np.argmax(targets, axis=1)
         trainerrors = np.sum(trainguesses != targetindices)
@@ -234,8 +232,7 @@ for epoch in range(0, MAXEPOCH):
         # NOW WE MAKE NEGDATA
         negdata = data
         labinothers = (labin - 1000 * targets)  # big negative logits for the targets so we do not choose them
-        softmax_labinothers = softmax(labinothers)
-        chosen_labels = choosefrom(softmax_labinothers)
+        chosen_labels = choosefrom( softmax(labinothers) )
         negdata[:, :NUMLAB] = labelstrength * chosen_labels
         normstates[0] = ffnormrows(negdata)
         for l in range(1, NLAYERS - 1):
