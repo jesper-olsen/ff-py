@@ -30,6 +30,7 @@ Download MNIST - either [4] or [3]; Edit mnist.py if [3]:
 
 Train a model:
 
+```
 % python main.py
 Batchsize: 100 Input-dim: 784 #training batches: 500
 states per layer:  [784, 1000, 1000, 1000, 10]
