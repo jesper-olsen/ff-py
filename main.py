@@ -1,10 +1,11 @@
 import collections
 import numpy as np
-import scipy.io
 from scipy.special import expit as logistic # 1/(1+exp(-x))
+import mnist
 
 tiny = np.exp(-50)  # for preventing divisions by zero
 dtype=np.float64
+NUMLAB = 10
 
 def ffnormrows(a):
     # Makes every 'a' have a sum of squared activities that averages 1 per neuron.
@@ -13,12 +14,12 @@ def ffnormrows(a):
 
 def choosefrom(probs):
     """vectorized - probablistically choose neg examples that are more like the targets"""
-    numcases, nlab = probs.shape
-    random_values = np.random.rand(numcases, 1)
+    batch_size, nlab = probs.shape
+    random_values = np.random.rand(batch_size, 1)
     cumulative_probs = np.cumsum(probs, axis=1)
     chosen_labels = (random_values < cumulative_probs).argmax(axis=1)
     postchoiceprobs = np.zeros_like(probs, dtype=dtype)
-    postchoiceprobs[np.arange(numcases), chosen_labels] = 1.0
+    postchoiceprobs[np.arange(batch_size), chosen_labels] = 1.0
     return postchoiceprobs
 
 def softmax(scores):
@@ -38,11 +39,11 @@ def ffenergytest(batchdata, batchtargets, maxbatches):
     for batch in range(maxbatches):
         data = batchdata[:, :, batch]
         targets = batchtargets[:, :, batch]
-        actsumsq = np.zeros((numcases, NUMLAB), dtype=dtype)
+        actsumsq = np.zeros((batch_size, NUMLAB), dtype=dtype)
 
         for lab in range(NUMLAB):
-            data[:, :NUMLAB] = np.zeros((numcases, NUMLAB), dtype=dtype)
-            data[:, lab] = labelstrength * np.ones(numcases, dtype=dtype)
+            data[:, :NUMLAB] = np.zeros((batch_size, NUMLAB), dtype=dtype)
+            data[:, lab] = labelstrength * np.ones(batch_size, dtype=dtype)
             normstates_lm1 = ffnormrows(data)
 
             for l in range(1, NLAYERS - 1):
@@ -64,7 +65,7 @@ def ffsoftmaxtest(batchdata, batchtargets, maxbatches):
     errors = tests = 0
     for batch in range(maxbatches):
         data = batchdata[:, :, batch]
-        data[:, :NUMLAB] = labelstrength * np.ones((numcases, NUMLAB),dtype=dtype) / NUMLAB
+        data[:, :NUMLAB] = labelstrength * np.ones((batch_size, NUMLAB),dtype=dtype) / NUMLAB
         targets = batchtargets[:, :, batch]
         normstates = {0: ffnormrows(data)}
 
@@ -72,7 +73,7 @@ def ffsoftmaxtest(batchdata, batchtargets, maxbatches):
             states = np.maximum(0, normstates[l - 1] @ weights[l] + biases[l])
             normstates[l] = ffnormrows(states)
 
-        labin = np.tile(biases[NLAYERS-1], (numcases, 1))
+        labin = np.tile(biases[NLAYERS-1], (batch_size, 1))
         for l in range(minlevelsup, NLAYERS - 1):
             labin += normstates[l] @ supweightsfrom[l]
 
@@ -98,17 +99,12 @@ def calc_epsgain(epoch, MAXEPOCH):
     
 np.random.seed(17)
 
-mnist_data = scipy.io.loadmat("mnistdata.mat")
-#for key in ["batchdata", "finaltestbatchdata", "validbatchdata"]:
-#    if key in mnist_data and mnist_data[key].dtype!=dtype:
-#        mnist_data[key] = mnist_data[key].astype(dtype)
+mnist_data=mnist.make_batches("MNIST")
 
-NUMLAB = 10
+batch_size, idim, numbatches = mnist_data["batchdata"].shape
+print(f"Batchsize: {batch_size} Input-dim: {idim} #training batches: {numbatches}")
 
-numcases, numvis, numbatches = mnist_data["batchdata"].shape
-print(f"Batchsize: {numcases} Input-dim: {numvis} #training batches: {numbatches}")
-
-LAYERS = [numvis, 1000, 1000, 1000, NUMLAB] 
+LAYERS = [idim, 1000, 1000, 1000, NUMLAB] 
 NLAYERS = len(LAYERS)
 
 lambdamean = 0.03
@@ -192,7 +188,7 @@ for epoch in range(0, MAXEPOCH):
         # NOW WE GET THE HIDDEN STATES WHEN THE LABEL IS NEUTRAL AND USE THE NORMALIZED HIDDEN STATES AS
         # INPUTS TO A SOFTMAX.  THIS SOFTMAX IS USED TO PICK HARD NEGATIVE LABELS
 
-        ones_array = np.ones((numcases, LAYERS[-1]), dtype=dtype) # dummy label in 1st 10 columns
+        ones_array = np.ones((batch_size, LAYERS[-1]), dtype=dtype) # dummy label in 1st 10 columns
         data[:, :NUMLAB] = labelstrength * ones_array[:, :NUMLAB] / LAYERS[-1]
         normstates[0] = ffnormrows(data)
 
@@ -201,7 +197,7 @@ for epoch in range(0, MAXEPOCH):
             states = np.maximum(0, totin)  # RELU
             normstates[l] = ffnormrows(states)
 
-        labin = np.tile(biases[NLAYERS-1], (numcases, 1))
+        labin = np.tile(biases[NLAYERS-1], (batch_size, 1))
         for l in range(minlevelsup, NLAYERS - 1):
             labin += np.dot(normstates[l], supweightsfrom[l])
             # normstates seems to work better than states for predicting the label
@@ -224,7 +220,7 @@ for epoch in range(0, MAXEPOCH):
         for l in range(minlevelsup, NLAYERS - 1):
             dCbydsupweightsfrom = np.dot(normstates[l].T, dCbydin)
             supweightsfromgrad[l] = \
-                delay * supweightsfromgrad[l] + (1 - delay) * dCbydsupweightsfrom / numcases
+                delay * supweightsfromgrad[l] + (1 - delay) * dCbydsupweightsfrom / batch_size
             supweightsfrom[l] = supweightsfrom[l] + epsgain * epsilonsup * \
                 (supweightsfromgrad[l] - supwc * supweightsfrom[l])
         # HACK: it works better without predicting the label from the first hidden layer.
@@ -249,9 +245,9 @@ for epoch in range(0, MAXEPOCH):
 
         for l in range(1, NLAYERS - 1):
             weightsgrad[l] = \
-                delay * weightsgrad[l] + (1 - delay) * (posdCbydweights[l] + negdCbydweights[l]) / numcases
+                delay * weightsgrad[l] + (1 - delay) * (posdCbydweights[l] + negdCbydweights[l]) / batch_size
             biasesgrad[l] = \
-                delay * biasesgrad[l] + (1 - delay) * (posdCbydbiases[l] + negdCbydbiases[l]) / numcases
+                delay * biasesgrad[l] + (1 - delay) * (posdCbydbiases[l] + negdCbydbiases[l]) / batch_size
             biases[l] = biases[l] + epsgain * epsilon * biasesgrad[l]
             weights[l] = weights[l] + epsgain * epsilon * (weightsgrad[l] - wc * weights[l])
 
