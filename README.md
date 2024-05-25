@@ -9,7 +9,7 @@ References:
 [1] [The Forward-Forward Algorithm: Some Preliminary Investigations, Geoffrey Hinton, NeurIPS 2022](https://www.cs.toronto.edu/~hinton/FFA13.pdf) <br/>
 [2] [Hinton's matlab code](https://www.cs.toronto.edu/~hinton/ffcode.zip) <br/>
 [3] [Hinton's preprocessed MNIST db](https://www.cs.toronto.edu/~hinton/mnistdata.mat) <br/>
-[4] [LeCun's raw MNIST db] http://yann.lecun.com/exdb/mnist/
+[4] [LeCun's raw MNIST db](http://yann.lecun.com/exdb/mnist/)
 
 Run:
 ----
