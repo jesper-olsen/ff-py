@@ -90,13 +90,6 @@ def ffsoftmaxtest(batchdata, batchtargets, maxbatches):
         tests += len(guesses)
     return errors, tests
 
-def calc_epsgain(epoch, MAXEPOCH):
-    #  multiplier on all weight changes - decays linearly to zero after MAXEPOCH/2
-    if epoch < MAXEPOCH / 2:
-        return 1.0
-    else:
-        return (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH
-    
 np.random.seed(17)
 
 mnist_data=mnist.make_batches("MNIST")
@@ -153,7 +146,8 @@ for epoch in range(0, MAXEPOCH):
     # number of times a negative example has higher goodness than the positive example
     pairsumerrs = collections.defaultdict(int)
     trainlogcost = 0.0
-    epsgain = calc_epsgain(epoch, MAXEPOCH)
+    # multiplier on all weight changes - decays linearly to zero after MAXEPOCH/2
+    epsgain = 1.0 if epoch<MAXEPOCH/2 else (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH 
 
     np.set_printoptions(threshold=np.inf)
     for batch in range(numbatches):
