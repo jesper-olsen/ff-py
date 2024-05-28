@@ -3,6 +3,11 @@ Forward-Forward
 
 The Forward-Forward algorithm [1] evaluated on the MNIST handwritten digit recognition task; Python+Numpy implementation following [2].
 
+Accuracy (energy / softmax) - train on 50k samples, validate on 10k, test on 10k:
+* Hinton's matlab code [2]: 1.44% / 1.47%  
+* The repo: 1.35% / 1.41%       
+
+Network: 5-layers; input layer with 784 (28x28) states, 3 hidden layers with 1000 states each and an output layer with 10 states corresponsing to the 10 digits.
 
 References:
 -----------

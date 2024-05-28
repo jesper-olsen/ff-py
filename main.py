@@ -131,8 +131,6 @@ meanstates = {l: 0.5 * np.ones(LAYERS[l], dtype=dtype) for l in range(1,NLAYERS-
 
 # the forward weights - scaled by sqrt(fanin). weights[2] is incoming weights to layer 2.
 weights = {l: (1/np.sqrt(LAYERS[l-1]))*np.random.randn(LAYERS[l-1], LAYERS[l])  for l in range(1,NLAYERS)}
-#weights[l] = np.loadtxt("random_numbers_layer%d.csv" % (l + 1), delimiter=",")
-
 biases = {l: 0.0 * np.ones(LAYERS[l],dtype=dtype) for l in range(1,NLAYERS)}
 
 #gradients are smoothed over minibatches
@@ -266,7 +264,6 @@ for epoch in range(0, MAXEPOCH):
         verrors, vtests = ffsoftmaxtest(mnist_data["validbatchdata"], mnist_data["validbatchtargets"], 100)
         print(f"Softmax-based errs: Valid {verrors}/{vtests}")
 
-    if (epoch + 1) % 5 == 0:
         print("rms: ", [rms(weights[l]) for l in range(1, NLAYERS - 1)])
         print("suprms: ", [rms(supweightsfrom[l]) for l in range(minlevelsup, NLAYERS - 1)])
         # the magnitudes of the sup weights show how much each hidden layer contributes to the softmax.
