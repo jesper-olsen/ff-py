@@ -34,58 +34,46 @@ def rms(x):
     # Assumes x is a matrix, but should work for vectors and scalars too
     return np.sqrt(np.sum(x**2) / (x.size))
 
-def ffenergytest(batchdata, batchtargets, maxbatches):
-    errors = tests = 0
-    for batch in range(maxbatches):
-        data = batchdata[:, :, batch]
-        targets = batchtargets[:, :, batch]
-        actsumsq = np.zeros((batch_size, NUMLAB), dtype=dtype)
-
-        for lab in range(NUMLAB):
-            data[:, :NUMLAB] = np.zeros((batch_size, NUMLAB), dtype=dtype)
-            data[:, lab] = labelstrength * np.ones(batch_size, dtype=dtype)
-            normstates_lm1 = ffnormrows(data)
-
-            for l in range(1, NLAYERS - 1):
-                states = np.maximum(0, normstates_lm1.dot(weights[l]) + biases[l])
-                if l >= minlevelenergy:
-                    actsumsq[:, lab] += np.sum(states**2, axis=1)
-                normstates_lm1 = ffnormrows(states)
-
-        score = np.max(actsumsq, axis=1)
-        guesses = np.argmax(actsumsq, axis=1)
-        tscore = np.max(targets, axis=1)
-        targetindices = np.argmax(targets, axis=1)
-
-        errors += np.sum(guesses != targetindices)
-        tests += len(guesses)
-    return errors, tests
-
-def ffsoftmaxtest(batchdata, batchtargets, maxbatches):
-    errors = tests = 0
-    for batch in range(maxbatches):
-        data = batchdata[:, :, batch]
-        data[:, :NUMLAB] = labelstrength * np.ones((batch_size, NUMLAB),dtype=dtype) / NUMLAB
-        targets = batchtargets[:, :, batch]
-        normstates = {0: ffnormrows(data)}
+def ffenergytest(data):
+    actsumsq = np.zeros((len(data), NUMLAB), dtype=dtype)
+    for lab in range(NUMLAB):
+        data[:, :NUMLAB] = np.zeros((len(data), NUMLAB), dtype=dtype)
+        data[:, lab] = labelstrength * np.ones(len(data), dtype=dtype)
+        normstates_lm1 = ffnormrows(data)
 
         for l in range(1, NLAYERS - 1):
-            states = np.maximum(0, normstates[l - 1] @ weights[l] + biases[l])
-            normstates[l] = ffnormrows(states)
+            states = np.maximum(0, normstates_lm1.dot(weights[l]) + biases[l])
+            if l >= minlevelenergy:
+                actsumsq[:, lab] += np.sum(states**2, axis=1)
+            normstates_lm1 = ffnormrows(states)
 
-        labin = np.tile(biases[NLAYERS-1], (batch_size, 1))
-        for l in range(minlevelsup, NLAYERS - 1):
-            labin += normstates[l] @ supweightsfrom[l]
+    #score = np.max(actsumsq, axis=1)
+    return np.argmax(actsumsq, axis=1) #guesses
 
-        labin -= np.max(labin, axis=1, keepdims=True)
-        unnormlabprobs = np.exp(labin)
+def ffsoftmaxtest(data):
+    data[:, :NUMLAB] = labelstrength * np.ones((len(data), NUMLAB),dtype=dtype) / NUMLAB
+    normstates = {0: ffnormrows(data)}
 
-        testpredictions = unnormlabprobs / np.sum(unnormlabprobs, axis=1, keepdims=True)
+    for l in range(1, NLAYERS - 1):
+        states = np.maximum(0, normstates[l - 1] @ weights[l] + biases[l])
+        normstates[l] = ffnormrows(states)
 
-        # logcost += -np.sum(targets * np.log(tiny + testpredictions)) / numbatches
+    labin = np.tile(biases[NLAYERS-1], (len(data), 1))
+    for l in range(minlevelsup, NLAYERS - 1):
+        labin += normstates[l] @ supweightsfrom[l]
+    labin -= np.max(labin, axis=1, keepdims=True)
+    unnormlabprobs = np.exp(labin)
+    testpredictions = unnormlabprobs / np.sum(unnormlabprobs, axis=1, keepdims=True)
+    # logcost += -np.sum(targets * np.log(tiny + testpredictions)) / numbatches
+    return  np.argmax(testpredictions, axis=1) # guesses
 
-        guesses = np.argmax(testpredictions, axis=1)
+def fftest(f_batch, batchdata, batchtargets):
+    errors = tests = 0
+    for batch in range(len(batchdata)):
+        data = batchdata[:, :, batch]
+        targets = batchtargets[:, :, batch]
         targetindices = np.argmax(targets, axis=1)
+        guesses = f_batch(data)
         errors += np.sum(guesses != targetindices)
         tests += len(guesses)
     return errors, tests
@@ -252,19 +240,19 @@ for epoch in range(0, MAXEPOCH):
             [pairsumerrs[l] for l in range(1,NLAYERS-1)])
 
     if (epoch + 1) % 5 == 0:
-        tr_errors, tr_tests = ffenergytest(mnist_data["batchdata"], mnist_data["batchtargets"], 100)
-        verrors, vtests = ffenergytest(mnist_data["validbatchdata"], mnist_data["validbatchtargets"], 100)
+        tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"])
+        verrors, vtests = fftest(ffenergytest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"])
         print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Valid {verrors}/{vtests}")
-        verrors, vtests = ffsoftmaxtest(mnist_data["validbatchdata"], mnist_data["validbatchtargets"], 100)
+        verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"])
         print(f"Softmax-based errs: Valid {verrors}/{vtests}")
 
         print("rms: ", [rms(weights[l]) for l in range(1, NLAYERS - 1)])
         print("suprms: ", [rms(supweightsfrom[l]) for l in range(minlevelsup, NLAYERS - 1)])
         # the magnitudes of the sup weights show how much each hidden layer contributes to the softmax.
 
-tr_errors, tr_tests = ffenergytest(mnist_data["batchdata"], mnist_data["batchtargets"], 100)
-te_errors, te_tests = ffenergytest(mnist_data["finaltestbatchdata"], mnist_data["finaltestbatchtargets"], 100)
+tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"])
+te_errors, te_tests = fftest(ffenergytest, mnist_data["testbatchdata"][:100], mnist_data["testbatchtargets"])
 print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
 
-te_errors, te_tests = ffsoftmaxtest(mnist_data["finaltestbatchdata"], mnist_data["finaltestbatchtargets"], 100)
+te_errors, te_tests = fftest(ffsoftmaxtest, mnist_data["testbatchdata"][:100], mnist_data["testbatchtargets"])
 print(f"Softmax-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")

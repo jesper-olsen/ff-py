@@ -34,12 +34,12 @@ def make_batches(path):
     images=read_images(path+"/raw/train-images-idx3-ubyte")/255.0
     batchdata = images[0:50000]
     validbatchdata = images[50000:]
-    finaltestbatchdata=read_images(path+"/raw/t10k-images-idx3-ubyte")/255.0
+    testbatchdata=read_images(path+"/raw/t10k-images-idx3-ubyte")/255.0
     
     labels=read_labels(path+"/raw/train-labels-idx1-ubyte") 
     batchtargets = label2target(labels[0:50000])
     validbatchtargets = label2target(labels[50000:])
-    finaltestbatchtargets=label2target( read_labels(path+"/raw/t10k-labels-idx1-ubyte") )
+    testbatchtargets=label2target( read_labels(path+"/raw/t10k-labels-idx1-ubyte") )
 
     def reshape(a, n):
         a = a.reshape(-1, 100, n)
@@ -50,10 +50,10 @@ def make_batches(path):
     numlab=10
     return { "batchdata": reshape(batchdata, npix),
              "validbatchdata": reshape(validbatchdata,npix),
-             "finaltestbatchdata": reshape(finaltestbatchdata,npix),
+             "testbatchdata": reshape(testbatchdata,npix),
              "batchtargets": reshape(batchtargets, numlab),
              "validbatchtargets": reshape(validbatchtargets, numlab),
-             "finaltestbatchtargets": reshape(finaltestbatchtargets,numlab)}
+             "testbatchtargets": reshape(testbatchtargets,numlab)}
 
 def show_image(image, label, index):
     plt.figure()

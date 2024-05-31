@@ -1,7 +1,7 @@
 Forward-Forward
 ===============
 
-The Forward-Forward algorithm [1,5] evaluated on the MNIST handwritten digit recognition task; Python+Numpy implementation following [2].
+The Forward-Forward algorithm [1,2] evaluated on the MNIST handwritten digit recognition task; Python+Numpy implementation following [3].
 
 Accuracy (energy / softmax) - train on 50k samples, validate on 10k, test on 10k:
 * Hinton's matlab code [2]: 1.44% / 1.47%  
@@ -12,15 +12,15 @@ Network: 5-layers; input layer with 784 (28x28) states, 3 hidden layers with 100
 References:
 -----------
 [1] [The Forward-Forward Algorithm: Some Preliminary Investigations, Geoffrey Hinton, NeurIPS 2022](https://www.cs.toronto.edu/~hinton/FFA13.pdf) <br/>
-[2] [Hinton's matlab code](https://www.cs.toronto.edu/~hinton/ffcode.zip) <br/>
-[3] [Hinton's preprocessed MNIST db](https://www.cs.toronto.edu/~hinton/mnistdata.mat) <br/>
-[4] [LeCun's raw MNIST db](http://yann.lecun.com/exdb/mnist/)
-[5] [Hinton's NIPS'22 Talk](https://nips.cc/virtual/2022/invited-talk/55869)
+[2] [Hinton's NIPS'22 Talk](https://nips.cc/virtual/2022/invited-talk/55869)
+[3] [Hinton's matlab code](https://www.cs.toronto.edu/~hinton/ffcode.zip) <br/>
+[4] [Hinton's preprocessed MNIST db](https://www.cs.toronto.edu/~hinton/mnistdata.mat) <br/>
+[5] [LeCun's raw MNIST db](http://yann.lecun.com/exdb/mnist/)
 
 Run:
 ----
 
-Download MNIST - either [4] or [3]; Edit mnist.py if [3]:   
+Download MNIST - either [5] or [4]; Edit mnist.py if [4]:   
 ```
 % mkdir -p MNIST/raw
 % cd MNIST
