@@ -12,7 +12,7 @@ Network: 5-layers; input layer with 784 (28x28) states, 3 hidden layers with 100
 References:
 -----------
 [1] [The Forward-Forward Algorithm: Some Preliminary Investigations, Geoffrey Hinton, NeurIPS 2022](https://www.cs.toronto.edu/~hinton/FFA13.pdf) <br/>
-[2] [Hinton's NIPS'22 Talk](https://nips.cc/virtual/2022/invited-talk/55869)
+[2] [Hinton's NIPS'22 Talk](https://nips.cc/virtual/2022/invited-talk/55869) <br/>
 [3] [Hinton's matlab code](https://www.cs.toronto.edu/~hinton/ffcode.zip) <br/>
 [4] [Hinton's preprocessed MNIST db](https://www.cs.toronto.edu/~hinton/mnistdata.mat) <br/>
 [5] [LeCun's raw MNIST db](http://yann.lecun.com/exdb/mnist/)
