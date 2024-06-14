@@ -78,7 +78,9 @@ def fftest(f_batch, batchdata, batchtargets):
         tests += len(guesses)
     return errors, tests
 
-np.random.seed(17)
+#np.random.seed(17)
+#np.random.seed(42)
+np.random.seed(1234)
 
 mnist_data=mnist.make_batches("MNIST")
 
