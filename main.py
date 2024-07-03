@@ -3,8 +3,8 @@ import numpy as np
 from scipy.special import expit as logistic # 1/(1+exp(-x))
 import mnist
 
-tiny = np.exp(-50)  # for preventing divisions by zero
-dtype=np.float64
+tiny = 1e-20  # for preventing divisions by zero
+dtype=np.float32
 NUMLAB = 10
 
 def ffnormrows(a):
@@ -40,14 +40,11 @@ def ffenergytest(data):
         data[:, :NUMLAB] = np.zeros((len(data), NUMLAB), dtype=dtype)
         data[:, lab] = labelstrength * np.ones(len(data), dtype=dtype)
         normstates_lm1 = ffnormrows(data)
-
         for l in range(1, NLAYERS - 1):
-            states = np.maximum(0, normstates_lm1.dot(weights[l]) + biases[l])
+            states = np.maximum(0, normstates_lm1 @ weights[l] + biases[l])
             if l >= minlevelenergy:
                 actsumsq[:, lab] += np.sum(states**2, axis=1)
             normstates_lm1 = ffnormrows(states)
-
-    #score = np.max(actsumsq, axis=1)
     return np.argmax(actsumsq, axis=1) #guesses
 
 def ffsoftmaxtest(data):
@@ -78,11 +75,11 @@ def fftest(f_batch, batchdata, batchtargets):
         tests += len(guesses)
     return errors, tests
 
-#np.random.seed(17)
-#np.random.seed(42)
 np.random.seed(1234)
 
 mnist_data=mnist.make_batches("MNIST")
+for key in mnist_data:
+    mnist_data[key]=mnist_data[key].astype(dtype)
 
 batch_size, idim, numbatches = mnist_data["batchdata"].shape
 print(f"Batchsize: {batch_size} Input-dim: {idim} #training batches: {numbatches}")
@@ -100,7 +97,9 @@ labelstrength = 1.0  # scaling up the activity of the label pixel doesn't seem t
 minlevelsup = 2  # used in training softmax predictor. Does not use hidden layers lower than this.
 minlevelenergy = 2  # used in computing goodness at test time. Does not use hidden layers lower than this.
 wc = 0.001 # weightcost on forward weights.
+wc = 0.002 # weightcost on forward weights.
 supwc = 0.003  # weightcost on label prediction weights.
+supwc = 0.004  # weightcost on label prediction weights.
 epsilon = 0.01  # learning rate for forward weights.
 epsilonsup = 0.1  # learning rate for linear softmax weights.
 delay = 0.9  #  used for smoothing the gradient over minibatches. 0.9 = 1 - 0.1
@@ -147,8 +146,8 @@ for epoch in range(0, MAXEPOCH):
         normstates[0] = ffnormrows(data)
 
         for l in range(1, NLAYERS - 1):
-            totin = np.dot(normstates[l - 1], weights[l]) + biases[l]
-            states = np.maximum(0, totin)  # RELU
+            totin = normstates[l - 1] @  weights[l] + biases[l]
+            states = np.maximum(0, totin)  # RELU)
             posprobs[l] = logistic( (np.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / temp )
 
             replicated_states = np.repeat(1-posprobs[l], LAYERS[l]).reshape(-1, LAYERS[l])
@@ -164,7 +163,7 @@ for epoch in range(0, MAXEPOCH):
             # This allows the extra term to revive units that are always off.  May not be needed.
 
             normstates[l] = ffnormrows(states)
-            posdCbydweights[l] = np.dot(normstates[l - 1].T, dCbydin)
+            posdCbydweights[l] = normstates[l - 1].T @ dCbydin
             posdCbydbiases[l] = np.sum(dCbydin, axis=0)
 
         # NOW WE GET THE HIDDEN STATES WHEN THE LABEL IS NEUTRAL AND USE THE NORMALIZED HIDDEN STATES AS
@@ -175,13 +174,13 @@ for epoch in range(0, MAXEPOCH):
         normstates[0] = ffnormrows(data)
 
         for l in range(1, NLAYERS - 1):
-            totin = np.dot(normstates[l - 1], weights[l]) + biases[l]
+            totin = normstates[l - 1] @ weights[l] + biases[l]
             states = np.maximum(0, totin)  # RELU
             normstates[l] = ffnormrows(states)
 
         labin = np.tile(biases[NLAYERS-1], (batch_size, 1))
         for l in range(minlevelsup, NLAYERS - 1):
-            labin += np.dot(normstates[l], supweightsfrom[l])
+            labin += normstates[l] @ supweightsfrom[l]
             # normstates seems to work better than states for predicting the label
 
         max_labin = np.max(labin, axis=1, keepdims=True)
@@ -200,7 +199,7 @@ for epoch in range(0, MAXEPOCH):
         # dCbydbiases[-1] = np.sum(dCbydin[-1], axis=0)
 
         for l in range(minlevelsup, NLAYERS - 1):
-            dCbydsupweightsfrom = np.dot(normstates[l].T, dCbydin)
+            dCbydsupweightsfrom = normstates[l].T @ dCbydin
             supweightsfromgrad[l] = \
                 delay * supweightsfromgrad[l] + (1 - delay) * dCbydsupweightsfrom / batch_size
             supweightsfrom[l] = supweightsfrom[l] + epsgain * epsilonsup * \
@@ -214,13 +213,13 @@ for epoch in range(0, MAXEPOCH):
         negdata[:, :NUMLAB] = labelstrength * chosen_labels
         normstates[0] = ffnormrows(negdata)
         for l in range(1, NLAYERS - 1):
-            totin = np.dot(normstates[l - 1], weights[l]) + biases[l]
+            totin = normstates[l - 1] @ weights[l] + biases[l]
             states = np.maximum(0, totin)
             sum_states_l_squared = np.sum(states**2, axis=1, keepdims=True)
             # negprobs - probability of saying a negative case is POSITIVE.
             negprobs[l] = logistic( (sum_states_l_squared - LAYERS[l]) / temp)  
             dCbydin = -np.tile(negprobs[l], (1, LAYERS[l])) * states
-            negdCbydweights[l] = np.dot(normstates[l - 1].T, dCbydin)
+            negdCbydweights[l] = normstates[l - 1].T @ dCbydin
             negdCbydbiases[l] = np.sum(dCbydin, axis=0)
             pairsumerrs[l] += np.sum(negprobs[l] > posprobs[l])
             normstates[l] = ffnormrows(states)
@@ -239,7 +238,7 @@ for epoch in range(0, MAXEPOCH):
 
     if True:
         print(f"ep {epoch:3} gain {epsgain:.3f} trainlogcost {trainlogcost:.4f} PairwiseErrs:",
-            [pairsumerrs[l] for l in range(1,NLAYERS-1)])
+            ", ".join([f"{pairsumerrs[l]}" for l in range(1,NLAYERS-1)]))
 
     if (epoch + 1) % 5 == 0:
         tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"])
@@ -248,8 +247,9 @@ for epoch in range(0, MAXEPOCH):
         verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"])
         print(f"Softmax-based errs: Valid {verrors}/{vtests}")
 
-        print("rms: ", [rms(weights[l]) for l in range(1, NLAYERS - 1)])
-        print("suprms: ", [rms(supweightsfrom[l]) for l in range(minlevelsup, NLAYERS - 1)])
+        print("rms: ", ", ".join([f"{rms(weights[l]):.4f}" for l in range(1, NLAYERS - 1)]))
+        #print("rms: ", [rms(weights[l]) for l in range(1, NLAYERS - 1)])
+        print("suprms: ", ", ".join([f"{rms(supweightsfrom[l]):.4f}" for l in range(minlevelsup, NLAYERS - 1)]))
         # the magnitudes of the sup weights show how much each hidden layer contributes to the softmax.
 
 tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"])
