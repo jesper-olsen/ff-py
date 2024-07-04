@@ -45,7 +45,7 @@ def equicols(matrix):
     norms = np.linalg.norm(matrix, axis=0)  # Calculate L2 norms of each column
     return matrix / norms  # Normalize each column by its L2 norm
 
-def rms(x):
+def rms(x) -> float:
     # Assumes x is a matrix, but should work for vectors and scalars too
     return np.sqrt(np.sum(x**2) / (x.size))
 
@@ -73,7 +73,7 @@ def ffsoftmaxtest(data):
         _, normstates[l] = layer_io(normstates[l-1], weights[l], biases[l])
     labin = np.tile(biases[NLAYERS-1], (len(data), 1))
     for l in range(MINLEVELSUP, NLAYERS - 1):
-        labin += normstates[l] @ supweightsfrom[l]
+        labin += normstates[l] @ supweights[l]
     labin -= np.max(labin, axis=1, keepdims=True)
     unnormlabprobs = np.exp(labin)
     testpredictions = unnormlabprobs / np.sum(unnormlabprobs, axis=1, keepdims=True)
@@ -111,6 +111,9 @@ meanstates = {l: 0.5 * np.ones(LAYERS[l], dtype=DTYPE) for l in range(1,NLAYERS-
 weights = {l: (1/np.sqrt(LAYERS[l-1]))*np.random.randn(LAYERS[l-1], LAYERS[l])  for l in range(1,NLAYERS)}
 biases = {l: 0.0 * np.ones(LAYERS[l],dtype=DTYPE) for l in range(1,NLAYERS)}
 
+# the weights used for predicting the label from the higher hidden layer activities.
+supweights = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+
 #gradients are smoothed over minibatches
 
 # gradients of probability of correct real/fake decision w.r.t. weights & biases
@@ -120,10 +123,7 @@ posdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAY
 negdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
 weightsgrad = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
 biasesgrad = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-
-# the weights used for predicting the label from the higher hidden layer activities.
-supweightsfrom = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-supweightsfromgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+supweightsgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
 
 print("states per layer: ", LAYERS)
 MAXEPOCH = 100
@@ -170,7 +170,7 @@ for epoch in range(0, MAXEPOCH):
             states, normstates[l] = layer_io(normstates[l-1], weights[l], biases[l])
         labin = np.tile(biases[NLAYERS-1], (batch_size, 1))
         for l in range(MINLEVELSUP, NLAYERS - 1):
-            labin += normstates[l] @ supweightsfrom[l]
+            labin += normstates[l] @ supweights[l]
             # normstates seems to work better than states for predicting the label
 
         max_labin = np.max(labin, axis=1, keepdims=True)
@@ -189,11 +189,11 @@ for epoch in range(0, MAXEPOCH):
         # dCbydbiases[-1] = np.sum(dCbydin[-1], axis=0)
 
         for l in range(MINLEVELSUP, NLAYERS - 1):
-            dCbydsupweightsfrom = normstates[l].T @ dCbydin
-            supweightsfromgrad[l] = \
-                DELAY * supweightsfromgrad[l] + (1 - DELAY) * dCbydsupweightsfrom / batch_size
-            supweightsfrom[l] = supweightsfrom[l] + epsgain * EPSILONSUP * \
-                (supweightsfromgrad[l] - SUPWC * supweightsfrom[l])
+            dCbydsupweights = normstates[l].T @ dCbydin
+            supweightsgrad[l] = \
+                DELAY * supweightsgrad[l] + (1 - DELAY) * dCbydsupweights / batch_size
+            supweights[l] = supweights[l] + epsgain * EPSILONSUP * \
+                (supweightsgrad[l] - SUPWC * supweights[l])
         # HACK: it works better without predicting the label from the first hidden layer.
 
         # NOW WE MAKE NEGDATA
@@ -237,7 +237,7 @@ for epoch in range(0, MAXEPOCH):
 
         print("rms: ", ", ".join([f"{rms(weights[l]):.4f}" for l in range(1, NLAYERS - 1)]))
         #print("rms: ", [rms(weights[l]) for l in range(1, NLAYERS - 1)])
-        print("suprms: ", ", ".join([f"{rms(supweightsfrom[l]):.4f}" for l in range(MINLEVELSUP, NLAYERS - 1)]))
+        print("suprms: ", ", ".join([f"{rms(supweights[l]):.4f}" for l in range(MINLEVELSUP, NLAYERS - 1)]))
         # the magnitudes of the sup weights show how much each hidden layer contributes to the softmax.
 
 tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"])
