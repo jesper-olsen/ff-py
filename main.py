@@ -34,6 +34,11 @@ def rms(x):
     # Assumes x is a matrix, but should work for vectors and scalars too
     return np.sqrt(np.sum(x**2) / (x.size))
 
+def layer_io(vin, weights, biases):
+    states = np.maximum(0, vin @ weights + biases)
+    normstates = ffnormrows(states)
+    return states,normstates
+
 def ffenergytest(data):
     actsumsq = np.zeros((len(data), NUMLAB), dtype=dtype)
     for lab in range(NUMLAB):
@@ -41,20 +46,16 @@ def ffenergytest(data):
         data[:, lab] = labelstrength * np.ones(len(data), dtype=dtype)
         normstates_lm1 = ffnormrows(data)
         for l in range(1, NLAYERS - 1):
-            states = np.maximum(0, normstates_lm1 @ weights[l] + biases[l])
+            states,normstates_lm1 = layer_io(normstates_lm1, weights[l], biases[l])
             if l >= minlevelenergy:
                 actsumsq[:, lab] += np.sum(states**2, axis=1)
-            normstates_lm1 = ffnormrows(states)
     return np.argmax(actsumsq, axis=1) #guesses
 
 def ffsoftmaxtest(data):
     data[:, :NUMLAB] = labelstrength * np.ones((len(data), NUMLAB),dtype=dtype) / NUMLAB
     normstates = {0: ffnormrows(data)}
-
     for l in range(1, NLAYERS - 1):
-        states = np.maximum(0, normstates[l - 1] @ weights[l] + biases[l])
-        normstates[l] = ffnormrows(states)
-
+        _, normstates[l] = layer_io(normstates[l-1], weights[l], biases[l])
     labin = np.tile(biases[NLAYERS-1], (len(data), 1))
     for l in range(minlevelsup, NLAYERS - 1):
         labin += normstates[l] @ supweightsfrom[l]
@@ -96,10 +97,8 @@ temp = 1  # rescales the logits used for deciding fake vs real
 labelstrength = 1.0  # scaling up the activity of the label pixel doesn't seem to help much.
 minlevelsup = 2  # used in training softmax predictor. Does not use hidden layers lower than this.
 minlevelenergy = 2  # used in computing goodness at test time. Does not use hidden layers lower than this.
-wc = 0.001 # weightcost on forward weights.
 wc = 0.002 # weightcost on forward weights.
 supwc = 0.003  # weightcost on label prediction weights.
-supwc = 0.004  # weightcost on label prediction weights.
 epsilon = 0.01  # learning rate for forward weights.
 epsilonsup = 0.1  # learning rate for linear softmax weights.
 delay = 0.9  #  used for smoothing the gradient over minibatches. 0.9 = 1 - 0.1
@@ -146,8 +145,7 @@ for epoch in range(0, MAXEPOCH):
         normstates[0] = ffnormrows(data)
 
         for l in range(1, NLAYERS - 1):
-            totin = normstates[l - 1] @  weights[l] + biases[l]
-            states = np.maximum(0, totin)  # RELU)
+            states,normstates[l]=layer_io(normstates[l-1], weights[l], biases[l])
             posprobs[l] = logistic( (np.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / temp )
 
             replicated_states = np.repeat(1-posprobs[l], LAYERS[l]).reshape(-1, LAYERS[l])
@@ -162,7 +160,6 @@ for epoch in range(0, MAXEPOCH):
             # all the units in the layer. Notice that we do not gate by (states>0) for this extra term.
             # This allows the extra term to revive units that are always off.  May not be needed.
 
-            normstates[l] = ffnormrows(states)
             posdCbydweights[l] = normstates[l - 1].T @ dCbydin
             posdCbydbiases[l] = np.sum(dCbydin, axis=0)
 
@@ -172,12 +169,8 @@ for epoch in range(0, MAXEPOCH):
         ones_array = np.ones((batch_size, LAYERS[-1]), dtype=dtype) # dummy label in 1st 10 columns
         data[:, :NUMLAB] = labelstrength * ones_array[:, :NUMLAB] / LAYERS[-1]
         normstates[0] = ffnormrows(data)
-
         for l in range(1, NLAYERS - 1):
-            totin = normstates[l - 1] @ weights[l] + biases[l]
-            states = np.maximum(0, totin)  # RELU
-            normstates[l] = ffnormrows(states)
-
+            states, normstates[l] = layer_io(normstates[l-1], weights[l], biases[l])
         labin = np.tile(biases[NLAYERS-1], (batch_size, 1))
         for l in range(minlevelsup, NLAYERS - 1):
             labin += normstates[l] @ supweightsfrom[l]
@@ -213,8 +206,7 @@ for epoch in range(0, MAXEPOCH):
         negdata[:, :NUMLAB] = labelstrength * chosen_labels
         normstates[0] = ffnormrows(negdata)
         for l in range(1, NLAYERS - 1):
-            totin = normstates[l - 1] @ weights[l] + biases[l]
-            states = np.maximum(0, totin)
+            states, normstates[l] = layer_io(normstates[l-1], weights[l], biases[l])
             sum_states_l_squared = np.sum(states**2, axis=1, keepdims=True)
             # negprobs - probability of saying a negative case is POSITIVE.
             negprobs[l] = logistic( (sum_states_l_squared - LAYERS[l]) / temp)  
@@ -222,7 +214,6 @@ for epoch in range(0, MAXEPOCH):
             negdCbydweights[l] = normstates[l - 1].T @ dCbydin
             negdCbydbiases[l] = np.sum(dCbydin, axis=0)
             pairsumerrs[l] += np.sum(negprobs[l] > posprobs[l])
-            normstates[l] = ffnormrows(states)
 
         for l in range(1, NLAYERS - 1):
             weightsgrad[l] = \
