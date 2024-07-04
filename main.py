@@ -104,8 +104,7 @@ def train(mnist_data):
 
     model=[None]
     for l, (fanin,fanout) in enumerate(zip(LAYERS[:-1],LAYERS[1:])):
-        #d=dict(weights=(1/np.sqrt(fanin))*np.random.randn(fanin, fanout).astype(DTYPE),  
-        d={'weights':(1/np.sqrt(fanin))*np.random.randn(fanin, fanout),  
+        d={'weights':(1/np.sqrt(fanin))*np.random.randn(fanin, fanout).astype(DTYPE),  
            'biases': 0.0 * np.ones(fanout,dtype=DTYPE)} 
         if l<NLAYERS-1:
             d['supweights'] = np.zeros((fanout, LAYERS[-1]), dtype=DTYPE) 
@@ -113,16 +112,24 @@ def train(mnist_data):
 
     #gradients are smoothed over minibatches
     # gradients of probability of correct real/fake decision w.r.t. weights & biases
-    posdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    negdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    posdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    negdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    weightsgrad = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    biasesgrad = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    supweightsgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    #posdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    #negdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    #posdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    #negdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    #weightsgrad = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    #biasesgrad = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    #supweightsgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+
+    posdCbydweights = [None]+[np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
+    negdCbydweights = [None]+[np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
+    posdCbydbiases = [None]+[np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
+    negdCbydbiases = [None]+[np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
+    weightsgrad = [None]+[np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
+    biasesgrad = [None]+[np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
+    supweightsgrad = [None]+[np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
 
     print("states per layer: ", LAYERS)
-    MAXEPOCH = 100
+    MAXEPOCH = 125
     for epoch in range(0, MAXEPOCH):
         # number of times a negative example has higher goodness than the positive example
         pairsumerrs = collections.defaultdict(int)
