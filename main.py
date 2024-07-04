@@ -79,9 +79,6 @@ def fftest(f_batch, batchdata, batchtargets):
 np.random.seed(1234)
 
 mnist_data=mnist.make_batches("MNIST")
-for key in mnist_data:
-    mnist_data[key]=mnist_data[key].astype(dtype)
-
 batch_size, idim, numbatches = mnist_data["batchdata"].shape
 print(f"Batchsize: {batch_size} Input-dim: {idim} #training batches: {numbatches}")
 

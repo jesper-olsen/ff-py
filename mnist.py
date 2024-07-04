@@ -21,25 +21,27 @@ def read_images(file_path):
         images = np.array(images, copy=True)
     return images
 
-def label2target(labels):
+def labels_to_one_hot(labels, dtype):
     numlab=10
-    return np.eye(numlab)[labels] 
+    return np.eye(numlab, dtype=dtype)[labels] 
 
-def make_batches(path):
+def make_batches(path, dtype=np.float32):
     #use Hinton's pre-processed matlab archive - note sequences have been re-ordered relative to MNIST
     #return scipy.io.loadmat(path+"/mnistdata.mat")
 
     # Return training, validation and test sets.
     # Each set is shaped into batches of 100 images
-    images=read_images(path+"/raw/train-images-idx3-ubyte")/255.0
+    #images=read_images(path+"/raw/train-images-idx3-ubyte")/255.0
+    images=read_images(path+"/raw/train-images-idx3-ubyte").astype(dtype)/255.0
     batchdata = images[0:50000]
     validbatchdata = images[50000:]
-    testbatchdata=read_images(path+"/raw/t10k-images-idx3-ubyte")/255.0
+    testbatchdata=read_images(path+"/raw/t10k-images-idx3-ubyte").astype(dtype)/255.0
     
     labels=read_labels(path+"/raw/train-labels-idx1-ubyte") 
-    batchtargets = label2target(labels[0:50000])
-    validbatchtargets = label2target(labels[50000:])
-    testbatchtargets=label2target( read_labels(path+"/raw/t10k-labels-idx1-ubyte") )
+    batchtargets = labels_to_one_hot(labels[0:50000], dtype)
+    validbatchtargets = labels_to_one_hot(labels[50000:], dtype)
+    labels=read_labels(path+"/raw/t10k-labels-idx1-ubyte") 
+    testbatchtargets = labels_to_one_hot(labels, dtype)
 
     def reshape(a, n):
         a = a.reshape(-1, 100, n)
