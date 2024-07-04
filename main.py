@@ -49,201 +49,201 @@ def rms(x) -> float:
     # Assumes x is a matrix, but should work for vectors and scalars too
     return np.sqrt(np.sum(x**2) / (x.size))
 
-def layer_io(vin, weights, biases):
-    states = np.maximum(0, vin @ weights + biases)
+def layer_io(vin, lmodel):
+    states = np.maximum(0, vin @ lmodel['weights'] + lmodel['biases'])
     normstates = ffnormrows(states)
     return states,normstates
 
-def ffenergytest(data):
+def ffenergytest(data, model):
     actsumsq = np.zeros((len(data), NUMLAB), dtype=DTYPE)
     for lab in range(NUMLAB):
         data[:, :NUMLAB] = np.zeros((len(data), NUMLAB), dtype=DTYPE)
         data[:, lab] = LABELSTRENGTH * np.ones(len(data), dtype=DTYPE)
         normstates_lm1 = ffnormrows(data)
-        for l in range(1, NLAYERS - 1):
-            states,normstates_lm1 = layer_io(normstates_lm1, weights[l], biases[l])
+        for l in range(1,len(model)):
+        #for l in range(1, NLAYERS - 1):
+            states,normstates_lm1 = layer_io(normstates_lm1, model[l])
             if l >= MINLEVELENERGY:
                 actsumsq[:, lab] += np.sum(states**2, axis=1)
     return np.argmax(actsumsq, axis=1) #guesses
 
-def ffsoftmaxtest(data):
+def ffsoftmaxtest(data, model):
     data[:, :NUMLAB] = LABELSTRENGTH * np.ones((len(data), NUMLAB),dtype=DTYPE) / NUMLAB
     normstates = {0: ffnormrows(data)}
-    for l in range(1, NLAYERS - 1):
-        _, normstates[l] = layer_io(normstates[l-1], weights[l], biases[l])
-    labin = np.tile(biases[NLAYERS-1], (len(data), 1))
-    for l in range(MINLEVELSUP, NLAYERS - 1):
-        labin += normstates[l] @ supweights[l]
+    for l in range(1,len(model)):
+        _, normstates[l] = layer_io(normstates[l-1], model[l])
+    labin = np.tile(model[-1]['biases'], (len(data), 1))
+    for l in range(MINLEVELSUP, len(model)):
+        labin += normstates[l] @ model[l]['supweights']
     labin -= np.max(labin, axis=1, keepdims=True)
     unnormlabprobs = np.exp(labin)
     testpredictions = unnormlabprobs / np.sum(unnormlabprobs, axis=1, keepdims=True)
     # logcost += -np.sum(targets * np.log(TINY + testpredictions)) / numbatches
     return  np.argmax(testpredictions, axis=1) # guesses
 
-def fftest(f_batch, batchdata, batchtargets):
+def fftest(f_batch, batchdata, batchtargets, model):
     errors = tests = 0
     for batch in range(len(batchdata)):
         data = batchdata[:, :, batch]
         targets = batchtargets[:, :, batch]
         targetindices = np.argmax(targets, axis=1)
-        guesses = f_batch(data)
+        guesses = f_batch(data, model)
         errors += np.sum(guesses != targetindices)
         tests += len(guesses)
     return errors, tests
 
-np.random.seed(1234)
+def train(mnist_data):
+    batch_size, idim, numbatches = mnist_data["batchdata"].shape
+    print(f"Batchsize: {batch_size} Input-dim: {idim} #training batches: {numbatches}")
 
-mnist_data=mnist.make_batches("MNIST")
-batch_size, idim, numbatches = mnist_data["batchdata"].shape
-print(f"Batchsize: {batch_size} Input-dim: {idim} #training batches: {numbatches}")
+    LAYERS = [idim, 1000, 1000, 1000, NUMLAB] 
+    NLAYERS = len(LAYERS)
 
-LAYERS = [idim, 1000, 1000, 1000, NUMLAB] 
-NLAYERS = len(LAYERS)
+    # meanstates - running average of the mean activity of a hidden unit.
+    meanstates = {l: 0.5 * np.ones(LAYERS[l], dtype=DTYPE) for l in range(1,NLAYERS-1)}
 
-normstates = [None] * NLAYERS
-posprobs = [None] * NLAYERS  # column vector of probs that positive cases are positive.
-negprobs = [None] * NLAYERS  # column vector of probs that negative cases are POSITIVE.
+    model=[None]
+    for l, (fanin,fanout) in enumerate(zip(LAYERS[:-1],LAYERS[1:])):
+        #d=dict(weights=(1/np.sqrt(fanin))*np.random.randn(fanin, fanout).astype(DTYPE),  
+        d={'weights':(1/np.sqrt(fanin))*np.random.randn(fanin, fanout),  
+           'biases': 0.0 * np.ones(fanout,dtype=DTYPE)} 
+        if l<NLAYERS-1:
+            d['supweights'] = np.zeros((fanout, LAYERS[-1]), dtype=DTYPE) 
+        model+=[d] 
 
-# meanstates - running average of the mean activity of a hidden unit.
-meanstates = {l: 0.5 * np.ones(LAYERS[l], dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    #gradients are smoothed over minibatches
+    # gradients of probability of correct real/fake decision w.r.t. weights & biases
+    posdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    negdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    posdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    negdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    weightsgrad = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    biasesgrad = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+    supweightsgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
 
-# the forward weights - scaled by sqrt(fanin). weights[2] is incoming weights to layer 2.
-weights = {l: (1/np.sqrt(LAYERS[l-1]))*np.random.randn(LAYERS[l-1], LAYERS[l])  for l in range(1,NLAYERS)}
-biases = {l: 0.0 * np.ones(LAYERS[l],dtype=DTYPE) for l in range(1,NLAYERS)}
+    print("states per layer: ", LAYERS)
+    MAXEPOCH = 100
+    for epoch in range(0, MAXEPOCH):
+        # number of times a negative example has higher goodness than the positive example
+        pairsumerrs = collections.defaultdict(int)
+        trainlogcost = 0.0
+        # multiplier on all weight changes - decays linearly to zero after MAXEPOCH/2
+        epsgain = 1.0 if epoch<MAXEPOCH/2 else (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH 
 
-# the weights used for predicting the label from the higher hidden layer activities.
-supweights = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+        np.set_printoptions(threshold=np.inf)
+        for batch in range(numbatches):
+            data = mnist_data["batchdata"][:, :, batch]  # 100x784
+            targets = mnist_data["batchtargets"][:, :, batch]
+            data[:, :NUMLAB] = LABELSTRENGTH * targets
+            normstates = {0: ffnormrows(data)}
+            posprobs = [None] * NLAYERS  # column vector of probs that positive cases are positive.
+            negprobs = [None] * NLAYERS  # column vector of probs that negative cases are POSITIVE.
+            for l in range(1, NLAYERS - 1):
+                states,normstates[l]=layer_io(normstates[l-1], model[l])
+                posprobs[l] = logistic( (np.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP )
 
-#gradients are smoothed over minibatches
+                replicated_states = np.repeat(1-posprobs[l], LAYERS[l]).reshape(-1, LAYERS[l])
+                # gradients of goodness w.r.t. total input to a hidden unit.
+                dCbydin = replicated_states * states  # Element-wise multiplication
+                # wrong sign: rate at which it gets BETTER not worse. Think of C as goodness.
 
-# gradients of probability of correct real/fake decision w.r.t. weights & biases
-posdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-negdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-posdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-negdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-weightsgrad = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-biasesgrad = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-supweightsgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
+                meanstates[l] = 0.9 * meanstates[l] + 0.1 * np.mean(states[l])  # Element-wise operations
+                mean_meanstates = np.mean(meanstates[l])
+                dCbydin = dCbydin + LAMBDAMEAN * (mean_meanstates - meanstates[l])  
+                # This is a regularizer that encourages the average activity of a unit to match that for
+                # all the units in the layer. Notice that we do not gate by (states>0) for this extra term.
+                # This allows the extra term to revive units that are always off.  May not be needed.
 
-print("states per layer: ", LAYERS)
-MAXEPOCH = 100
-for epoch in range(0, MAXEPOCH):
-    # number of times a negative example has higher goodness than the positive example
-    pairsumerrs = collections.defaultdict(int)
-    trainlogcost = 0.0
-    # multiplier on all weight changes - decays linearly to zero after MAXEPOCH/2
-    epsgain = 1.0 if epoch<MAXEPOCH/2 else (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH 
+                posdCbydweights[l] = normstates[l - 1].T @ dCbydin
+                posdCbydbiases[l] = np.sum(dCbydin, axis=0)
 
-    np.set_printoptions(threshold=np.inf)
-    for batch in range(numbatches):
-        data = mnist_data["batchdata"][:, :, batch]  # 100x784
-        targets = mnist_data["batchtargets"][:, :, batch]
-        data[:, :NUMLAB] = LABELSTRENGTH * targets
-        normstates[0] = ffnormrows(data)
+            # NOW WE GET THE HIDDEN STATES WHEN THE LABEL IS NEUTRAL AND USE THE NORMALIZED HIDDEN STATES AS
+            # INPUTS TO A SOFTMAX.  THIS SOFTMAX IS USED TO PICK HARD NEGATIVE LABELS
 
-        for l in range(1, NLAYERS - 1):
-            states,normstates[l]=layer_io(normstates[l-1], weights[l], biases[l])
-            posprobs[l] = logistic( (np.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP )
+            ones_array = np.ones((batch_size, LAYERS[-1]), dtype=DTYPE) # dummy label in 1st 10 columns
+            data[:, :NUMLAB] = LABELSTRENGTH * ones_array[:, :NUMLAB] / LAYERS[-1]
+            normstates = {0: ffnormrows(data)}
+            for l in range(1, NLAYERS - 1):
+                states, normstates[l] = layer_io(normstates[l-1], model[l])
+            labin = np.tile(model[NLAYERS-1]['biases'], (batch_size, 1))
+            for l in range(MINLEVELSUP, NLAYERS - 1):
+                labin += normstates[l] @ model[l]['supweights']
+                # normstates seems to work better than states for predicting the label
 
-            replicated_states = np.repeat(1-posprobs[l], LAYERS[l]).reshape(-1, LAYERS[l])
-            # gradients of goodness w.r.t. total input to a hidden unit.
-            dCbydin = replicated_states * states  # Element-wise multiplication
-            # wrong sign: rate at which it gets BETTER not worse. Think of C as goodness.
+            max_labin = np.max(labin, axis=1, keepdims=True)
+            labin -= np.tile(max_labin, (1, LAYERS[-1]))
+            unnormlabprobs = np.exp(labin)
+            sum_unnormlabprobs = np.sum(unnormlabprobs, axis=1, keepdims=True)
+            trainpredictions = unnormlabprobs / np.tile( sum_unnormlabprobs, (1, LAYERS[-1]) )
+            correctprobs = np.sum(trainpredictions * targets, axis=1)
+            trainlogcost += np.sum(-np.log(TINY+correctprobs))/numbatches # per batch (not per case)
 
-            meanstates[l] = 0.9 * meanstates[l] + 0.1 * np.mean(states[l])  # Element-wise operations
-            mean_meanstates = np.mean(meanstates[l])
-            dCbydin = dCbydin + LAMBDAMEAN * (mean_meanstates - meanstates[l])  
-            # This is a regularizer that encourages the average activity of a unit to match that for
-            # all the units in the layer. Notice that we do not gate by (states>0) for this extra term.
-            # This allows the extra term to revive units that are always off.  May not be needed.
+            trainguesses = np.argmax(trainpredictions, axis=1)
+            targetindices = np.argmax(targets, axis=1)
+            trainerrors = np.sum(trainguesses != targetindices)
 
-            posdCbydweights[l] = normstates[l - 1].T @ dCbydin
-            posdCbydbiases[l] = np.sum(dCbydin, axis=0)
+            dCbydin = targets - trainpredictions
+            # dCbydbiases[-1] = np.sum(dCbydin[-1], axis=0)
 
-        # NOW WE GET THE HIDDEN STATES WHEN THE LABEL IS NEUTRAL AND USE THE NORMALIZED HIDDEN STATES AS
-        # INPUTS TO A SOFTMAX.  THIS SOFTMAX IS USED TO PICK HARD NEGATIVE LABELS
+            for l in range(MINLEVELSUP, NLAYERS - 1):
+                dCbydsupweights = normstates[l].T @ dCbydin
+                supweightsgrad[l] = \
+                    DELAY * supweightsgrad[l] + (1 - DELAY) * dCbydsupweights / batch_size
+                model[l]['supweights'] = model[l]['supweights'] + epsgain * EPSILONSUP * \
+                    (supweightsgrad[l] - SUPWC * model[l]['supweights'])
+            # HACK: it works better without predicting the label from the first hidden layer.
 
-        ones_array = np.ones((batch_size, LAYERS[-1]), dtype=DTYPE) # dummy label in 1st 10 columns
-        data[:, :NUMLAB] = LABELSTRENGTH * ones_array[:, :NUMLAB] / LAYERS[-1]
-        normstates[0] = ffnormrows(data)
-        for l in range(1, NLAYERS - 1):
-            states, normstates[l] = layer_io(normstates[l-1], weights[l], biases[l])
-        labin = np.tile(biases[NLAYERS-1], (batch_size, 1))
-        for l in range(MINLEVELSUP, NLAYERS - 1):
-            labin += normstates[l] @ supweights[l]
-            # normstates seems to work better than states for predicting the label
+            # NOW WE MAKE NEGDATA
+            negdata = data
+            labinothers = (labin - 1000 * targets)  # big negative logits for the targets so we do not choose them
+            chosen_labels = choosefrom( softmax(labinothers) )
+            negdata[:, :NUMLAB] = LABELSTRENGTH * chosen_labels
+            normstates = {0: ffnormrows(negdata)}
+            for l in range(1, NLAYERS - 1):
+                states, normstates[l] = layer_io(normstates[l-1], model[l])
+                sum_states_l_squared = np.sum(states**2, axis=1, keepdims=True)
+                # negprobs - probability of saying a negative case is POSITIVE.
+                negprobs[l] = logistic( (sum_states_l_squared - LAYERS[l]) / TEMP)  
+                dCbydin = -np.tile(negprobs[l], (1, LAYERS[l])) * states
+                negdCbydweights[l] = normstates[l - 1].T @ dCbydin
+                negdCbydbiases[l] = np.sum(dCbydin, axis=0)
+                pairsumerrs[l] += np.sum(negprobs[l] > posprobs[l])
 
-        max_labin = np.max(labin, axis=1, keepdims=True)
-        labin -= np.tile(max_labin, (1, LAYERS[-1]))
-        unnormlabprobs = np.exp(labin)
-        sum_unnormlabprobs = np.sum(unnormlabprobs, axis=1, keepdims=True)
-        trainpredictions = unnormlabprobs / np.tile( sum_unnormlabprobs, (1, LAYERS[-1]) )
-        correctprobs = np.sum(trainpredictions * targets, axis=1)
-        trainlogcost += np.sum(-np.log(TINY+correctprobs))/numbatches # per batch (not per case)
+            for l in range(1, NLAYERS - 1):
+                weightsgrad[l] = \
+                    DELAY * weightsgrad[l] + (1 - DELAY) * (posdCbydweights[l] + negdCbydweights[l]) / batch_size
+                biasesgrad[l] = \
+                    DELAY * biasesgrad[l] + (1 - DELAY) * (posdCbydbiases[l] + negdCbydbiases[l]) / batch_size
+                model[l]['biases'] = model[l]['biases'] + epsgain * EPSILON * biasesgrad[l]
+                model[l]['weights'] += epsgain * EPSILON * (weightsgrad[l] - WC * model[l]['weights'])
 
-        trainguesses = np.argmax(trainpredictions, axis=1)
-        targetindices = np.argmax(targets, axis=1)
-        trainerrors = np.sum(trainguesses != targetindices)
+                # Optionally, apply equicols(weights{l}) if equicols function is available
+                # equicols makes the incoming weight vectors have the same L2 norm for all units in a layer.
+                # weights[l] = equicols(weights[l])
 
-        dCbydin = targets - trainpredictions
-        # dCbydbiases[-1] = np.sum(dCbydin[-1], axis=0)
+        if True:
+            print(f"ep {epoch:3} gain {epsgain:.3f} trainlogcost {trainlogcost:.4f} PairwiseErrs:",
+                ", ".join([f"{pairsumerrs[l]}" for l in range(1,NLAYERS-1)]))
 
-        for l in range(MINLEVELSUP, NLAYERS - 1):
-            dCbydsupweights = normstates[l].T @ dCbydin
-            supweightsgrad[l] = \
-                DELAY * supweightsgrad[l] + (1 - DELAY) * dCbydsupweights / batch_size
-            supweights[l] = supweights[l] + epsgain * EPSILONSUP * \
-                (supweightsgrad[l] - SUPWC * supweights[l])
-        # HACK: it works better without predicting the label from the first hidden layer.
+        if (epoch + 1) % 5 == 0:
+            tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
+            verrors, vtests = fftest(ffenergytest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
+            print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Valid {verrors}/{vtests}")
+            verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
+            print(f"Softmax-based errs: Valid {verrors}/{vtests}")
+            print("rms: ", ", ".join([f"{rms(model[l]['weights']):.4f}" for l in range(1, NLAYERS - 1)]))
+            #print("rms: ", [rms(model[l]['weights']) for l in range(1, NLAYERS - 1)])
+            print("suprms: ", ", ".join([f"{rms(model[l]['supweights']):.4f}" for l in range(MINLEVELSUP, NLAYERS - 1)]))
+            # the magnitudes of the sup weights show how much each hidden layer contributes to the softmax.
+    return model
 
-        # NOW WE MAKE NEGDATA
-        negdata = data
-        labinothers = (labin - 1000 * targets)  # big negative logits for the targets so we do not choose them
-        chosen_labels = choosefrom( softmax(labinothers) )
-        negdata[:, :NUMLAB] = LABELSTRENGTH * chosen_labels
-        normstates[0] = ffnormrows(negdata)
-        for l in range(1, NLAYERS - 1):
-            states, normstates[l] = layer_io(normstates[l-1], weights[l], biases[l])
-            sum_states_l_squared = np.sum(states**2, axis=1, keepdims=True)
-            # negprobs - probability of saying a negative case is POSITIVE.
-            negprobs[l] = logistic( (sum_states_l_squared - LAYERS[l]) / TEMP)  
-            dCbydin = -np.tile(negprobs[l], (1, LAYERS[l])) * states
-            negdCbydweights[l] = normstates[l - 1].T @ dCbydin
-            negdCbydbiases[l] = np.sum(dCbydin, axis=0)
-            pairsumerrs[l] += np.sum(negprobs[l] > posprobs[l])
-
-        for l in range(1, NLAYERS - 1):
-            weightsgrad[l] = \
-                DELAY * weightsgrad[l] + (1 - DELAY) * (posdCbydweights[l] + negdCbydweights[l]) / batch_size
-            biasesgrad[l] = \
-                DELAY * biasesgrad[l] + (1 - DELAY) * (posdCbydbiases[l] + negdCbydbiases[l]) / batch_size
-            biases[l] = biases[l] + epsgain * EPSILON * biasesgrad[l]
-            weights[l] = weights[l] + epsgain * EPSILON * (weightsgrad[l] - WC * weights[l])
-
-            # Optionally, apply equicols(weights{l}) if equicols function is available
-            # equicols makes the incoming weight vectors have the same L2 norm for all units in a layer.
-            # weights[l] = equicols(weights[l])
-
-    if True:
-        print(f"ep {epoch:3} gain {epsgain:.3f} trainlogcost {trainlogcost:.4f} PairwiseErrs:",
-            ", ".join([f"{pairsumerrs[l]}" for l in range(1,NLAYERS-1)]))
-
-    if (epoch + 1) % 5 == 0:
-        tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"])
-        verrors, vtests = fftest(ffenergytest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"])
-        print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Valid {verrors}/{vtests}")
-        verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"])
-        print(f"Softmax-based errs: Valid {verrors}/{vtests}")
-
-        print("rms: ", ", ".join([f"{rms(weights[l]):.4f}" for l in range(1, NLAYERS - 1)]))
-        #print("rms: ", [rms(weights[l]) for l in range(1, NLAYERS - 1)])
-        print("suprms: ", ", ".join([f"{rms(supweights[l]):.4f}" for l in range(MINLEVELSUP, NLAYERS - 1)]))
-        # the magnitudes of the sup weights show how much each hidden layer contributes to the softmax.
-
-tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"])
-te_errors, te_tests = fftest(ffenergytest, mnist_data["testbatchdata"][:100], mnist_data["testbatchtargets"])
-print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
-
-te_errors, te_tests = fftest(ffsoftmaxtest, mnist_data["testbatchdata"][:100], mnist_data["testbatchtargets"])
-print(f"Softmax-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
+if __name__ == "__main__":
+    np.random.seed(1234)
+    data=mnist.make_batches("MNIST")
+    model=train(data)
+    tr_errors, tr_tests = fftest(ffenergytest, data["batchdata"][:100], data["batchtargets"], model)
+    te_errors, te_tests = fftest(ffenergytest, data["testbatchdata"][:100], data["testbatchtargets"], model)
+    print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
+    te_errors, te_tests = fftest(ffsoftmaxtest, data["testbatchdata"][:100], data["testbatchtargets"], model)
+    print(f"Softmax-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
 
