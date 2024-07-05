@@ -1,13 +1,16 @@
 Forward-Forward
 ===============
 
-The Forward-Forward algorithm [1,2] evaluated on the MNIST handwritten digit recognition task; Python+Numpy implementation following [3].
-
-Error rate (energy / softmax) - train on 50k samples, validate on 10k, test on 10k:
-* Hinton's matlab code [2]: 1.44% / 1.47%  
-* This repo: 1.33% / 1.38%       
+The Forward-Forward algorithm [1,2] evaluated on the MNIST handwritten digit recognition task; Python implementation following [3]. Two versions are implemented: one with [numpy](https://numpy.org/) and one with [jax](https://github.com/google/jax).
 
 Network: 5-layers; input layer with 784 (28x28) states, 3 hidden layers with 1000 states each and an output layer with 10 states corresponding to the 10 digits.
+
+Data partitioning: Train on 50k samples, validate on 10k, test on 10k.
+
+Error rate (energy / softmax):
+* Hinton's matlab code [2]: 1.44% / 1.47%  
+* This repo (numpy): 1.33% / 1.38%       
+* This repo (jax) :1.30% / 1.45%
 
 See the [Deep Boltzmann Machines](https://github.com/jesper-olsen/rbm-py) repo for another result on the same task.
 
@@ -36,7 +39,7 @@ Download MNIST - either [5] or [4]; Edit mnist.py if [4]:
 % cd ../..
 ```
 
-Train a model:
+Train a model - run either main.py (numpy version) or main_jax.py.
 
 ```
 % time python main.py
