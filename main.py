@@ -110,20 +110,11 @@ def train(mnist_data):
             d['supweights'] = np.zeros((fanout, LAYERS[-1]), dtype=DTYPE) 
         model+=[d] 
 
-    #gradients are smoothed over minibatches
-    # gradients of probability of correct real/fake decision w.r.t. weights & biases
-    #posdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    #negdCbydweights = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    #posdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    #negdCbydbiases = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    #weightsgrad = {l: np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    #biasesgrad = {l: np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-    #supweightsgrad = {l: np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)}
-
-    posdCbydweights = [None]+[np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
-    negdCbydweights = [None]+[np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
-    posdCbydbiases = [None]+[np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
-    negdCbydbiases = [None]+[np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
+    # gradients of probability of correct real/fake decision w.r.t. weights & biases - smoothed over minibatches
+    posdCbydweights = [None]*NLAYERS
+    negdCbydweights = [None]*NLAYERS
+    posdCbydbiases = [None]*NLAYERS
+    negdCbydbiases = [None]*NLAYERS
     weightsgrad = [None]+[np.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
     biasesgrad = [None]+[np.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
     supweightsgrad = [None]+[np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
