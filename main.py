@@ -128,7 +128,6 @@ def train(mnist_data):
         # multiplier on all weight changes - decays linearly to zero after MAXEPOCH/2
         epsgain = 1.0 if epoch<MAXEPOCH/2 else (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH 
 
-        np.set_printoptions(threshold=np.inf)
         for batch in range(numbatches):
             data = mnist_data["batchdata"][:, :, batch]  # 100x784
             targets = mnist_data["batchtargets"][:, :, batch]
