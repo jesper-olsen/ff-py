@@ -28,8 +28,8 @@ def ffnormrows(a):
     return ( a / (TINY + np.sqrt(np.mean(a**2, axis=1, keepdims=True))) * np.ones((num_comp), dtype=DTYPE))
 
 def choosefrom(probs):
-    """vectorized - probablistically choose neg examples that are more like the targets"""
-    batch_size, nlab = probs.shape
+    """vectorized - probabilistically choose neg examples that are more like the targets"""
+    batch_size, _ = probs.shape   # batch_size x nlabels
     random_values = np.random.rand(batch_size, 1)
     cumulative_probs = np.cumsum(probs, axis=1)
     chosen_labels = (random_values < cumulative_probs).argmax(axis=1)
@@ -126,7 +126,7 @@ def train(mnist_data):
         pairsumerrs = collections.defaultdict(int)
         trainlogcost = 0.0
         # multiplier on all weight changes - decays linearly to zero after MAXEPOCH/2
-        epsgain = 1.0 if epoch<MAXEPOCH/2 else (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH 
+        epsgain = 1.0 if epoch<MAXEPOCH/2 else (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH
 
         for batch in range(numbatches):
             data = mnist_data["batchdata"][:, :, batch]  # 100x784

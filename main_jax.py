@@ -29,8 +29,8 @@ def ffnormrows(a):
     return a / (TINY + jnp.sqrt(jnp.mean(a**2, axis=1, keepdims=True))) * jnp.ones((num_comp), dtype=DTYPE)
 
 def choosefrom(probs, key):
-    """vectorized - probablistically choose neg examples that are more like the targets"""
-    batch_size, nlab = probs.shape
+    """vectorized - probabilistically choose neg examples that are more like the targets"""
+    batch_size, _ = probs.shape   # batch_size x nlabels
     random_values = random.uniform(key, (batch_size, 1))
     cumulative_probs = jnp.cumsum(probs, axis=1)
     chosen_labels = jnp.argmax(random_values < cumulative_probs, axis=1)
