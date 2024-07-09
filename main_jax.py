@@ -68,7 +68,8 @@ def ffenergytest(data, model):
             states, normstates_lm1 = layer_io(normstates_lm1, model[l])
             if l >= MINLEVELENERGY:
                 actsumsq = actsumsq.at[:, lab].add(jnp.sum(states**2, axis=1))
-    return jnp.argmax(actsumsq, axis=1)  # guesses
+    #return jnp.argmax(actsumsq, axis=1)  # guesses
+    return actsumsq, None
 
 @jit
 def ffsoftmaxtest(data, model):
@@ -81,9 +82,10 @@ def ffsoftmaxtest(data, model):
         labin += normstates[l] @ model[l]['supweights']
     labin = labin - jnp.max(labin, axis=1, keepdims=True)
     unnormlabprobs = jnp.exp(labin)
-    testpredictions = unnormlabprobs / jnp.sum(unnormlabprobs, axis=1, keepdims=True)
-    # logcost += -np.sum(targets * np.log(TINY + testpredictions)) / numbatches
-    return jnp.argmax(testpredictions, axis=1)  # guesses
+    predictions = unnormlabprobs / jnp.sum(unnormlabprobs, axis=1, keepdims=True)
+    # logcost += -np.sum(targets * np.log(TINY + predictions)) / numbatches
+    return predictions, labin
+    #return jnp.argmax(predictions, axis=1)  # guesses
 
 def fftest(f_batch, batchdata, batchtargets, model):
     errors = tests = 0
@@ -91,7 +93,8 @@ def fftest(f_batch, batchdata, batchtargets, model):
         data = batchdata[:, :, batch]
         targets = batchtargets[:, :, batch]
         targetindices = jnp.argmax(targets, axis=1)
-        guesses = f_batch(data, model)
+        predictions, _ = f_batch(data, model)
+        guesses = jnp.argmax(predictions, axis=1)  
         errors += jnp.sum(guesses != targetindices)
         tests += len(guesses)
     return errors, tests
@@ -175,15 +178,15 @@ def train(mnist_data, key):
             labin = labin - jnp.tile(max_labin, (1, LAYERS[-1]))
             unnormlabprobs = jnp.exp(labin)
             sum_unnormlabprobs = jnp.sum(unnormlabprobs, axis=1, keepdims=True)
-            trainpredictions = unnormlabprobs / jnp.tile( sum_unnormlabprobs, (1, LAYERS[-1]) )
-            correctprobs = jnp.sum(trainpredictions * targets, axis=1)
+            predictions = unnormlabprobs / jnp.tile( sum_unnormlabprobs, (1, LAYERS[-1]) )
+            correctprobs = jnp.sum(predictions * targets, axis=1)
             trainlogcost += jnp.sum(-jnp.log(TINY+correctprobs))
 
-            #trainguesses = jnp.argmax(trainpredictions, axis=1)
+            #trainguesses = jnp.argmax(predictions, axis=1)
             #targetindices = jnp.argmax(targets, axis=1)
             #trainerrors = jnp.sum(trainguesses != targetindices)
 
-            dCbydin = targets - trainpredictions
+            dCbydin = targets - predictions
             # dCbydbiases[-1] = np.sum(dCbydin[-1], axis=0)
 
             for l in range(MINLEVELSUP, NLAYERS - 1):
