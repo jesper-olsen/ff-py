@@ -28,6 +28,7 @@ def ffnormrows(a):
     num_comp = a.shape[1]
     return a / (TINY + jnp.sqrt(jnp.mean(a**2, axis=1, keepdims=True))) * jnp.ones((num_comp), dtype=DTYPE)
 
+@jit
 def choosefrom(probs, key):
     """vectorized - probabilistically choose neg examples that are more like the targets"""
     batch_size, _ = probs.shape   # batch_size x nlabels
@@ -50,6 +51,7 @@ def rms(x) -> float:
     # Assumes x is a matrix, but should work for vectors and scalars too
     return jnp.sqrt(jnp.sum(x**2) / x.size)
 
+@jit
 def layer_io(vin, lmodel):
     states = jnp.maximum(0, vin @ lmodel['weights'] + lmodel['biases'])
     normstates = ffnormrows(states)
@@ -119,9 +121,7 @@ def train(mnist_data, key):
 
     # gradients of probability of correct real/fake decision w.r.t. weights & biases - smoothed over minibatches
     posdCbydweights = [None] * NLAYERS
-    negdCbydweights = [None] * NLAYERS
     posdCbydbiases = [None] * NLAYERS
-    negdCbydbiases = [None] * NLAYERS
     weightsgrad = [None] + [jnp.zeros((LAYERS[l - 1], LAYERS[l]), dtype=DTYPE) for l in range(1, NLAYERS - 1)]
     biasesgrad = [None] + [jnp.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1, NLAYERS - 1)]
     supweightsgrad = [None] + [jnp.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1, NLAYERS - 1)]
@@ -145,12 +145,10 @@ def train(mnist_data, key):
             for l in range(1, NLAYERS - 1):
                 states,normstates[l]=layer_io(normstates[l-1], model[l])
                 posprobs[l] = logistic((jnp.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP)
-
                 replicated_states = jnp.repeat(1-posprobs[l], LAYERS[l]).reshape(-1, LAYERS[l])
                 # gradients of goodness w.r.t. total input to a hidden unit.
                 dCbydin = replicated_states * states  # Element-wise multiplication
                 # wrong sign: rate at which it gets BETTER not worse. Think of C as goodness.
-
                 meanstates[l] = 0.9 * meanstates[l] + 0.1 * jnp.mean(states[l])  # Element-wise operations
                 mean_meanstates = jnp.mean(meanstates[l])
                 dCbydin = dCbydin + LAMBDAMEAN * (mean_meanstates - meanstates[l])  
@@ -161,8 +159,8 @@ def train(mnist_data, key):
                 posdCbydweights[l] = normstates[l - 1].T @ dCbydin
                 posdCbydbiases[l] = jnp.sum(dCbydin, axis=0)
 
-            # NOW WE GET THE HIDDEN STATES WHEN THE LABEL IS NEUTRAL AND USE THE NORMALIZED HIDDEN STATES AS
-            # INPUTS TO A SOFTMAX.  THIS SOFTMAX IS USED TO PICK HARD NEGATIVE LABELS
+            # NOW WE GET THE HIDDEN STATES WHEN THE LABEL IS NEUTRAL AND USE THE NORMALIZED HIDDEN STATES 
+            # AS INPUTS TO A SOFTMAX.  THIS SOFTMAX IS USED TO PICK HARD NEGATIVE LABELS
 
             ones_array = jnp.ones((batch_size, LAYERS[-1]), dtype=DTYPE) # dummy label in 1st 10 columns
             data = data.at[:, :NUMLAB].set(LABELSTRENGTH * ones_array[:, :NUMLAB] / LAYERS[-1])
@@ -206,19 +204,18 @@ def train(mnist_data, key):
 
             for l in range(1, NLAYERS - 1):
                 states, normstates[l] = layer_io(normstates[l-1], model[l])
-                sum_states_l_squared = jnp.sum(states**2, axis=1, keepdims=True)
                 # negprobs - probability of saying a negative case is POSITIVE.
-                negprobs[l] = logistic((sum_states_l_squared - LAYERS[l]) / TEMP)  
+                negprobs[l] = logistic((jnp.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP)
                 dCbydin = -jnp.tile(negprobs[l], (1, LAYERS[l])) * states
-                negdCbydweights[l] = normstates[l - 1].T @ dCbydin
-                negdCbydbiases[l] = jnp.sum(dCbydin, axis=0)
                 pairsumerrs[l] += jnp.sum(negprobs[l] > posprobs[l])
 
-            for l in range(1, NLAYERS - 1):
+                negdCbydweights = normstates[l - 1].T @ dCbydin
+                negdCbydbiases = jnp.sum(dCbydin, axis=0)
+
                 weightsgrad[l] = \
-                    DELAY * weightsgrad[l] + (1 - DELAY) * (posdCbydweights[l] + negdCbydweights[l]) / batch_size
+                    DELAY * weightsgrad[l] + (1 - DELAY) * (posdCbydweights[l] + negdCbydweights) / batch_size
                 biasesgrad[l] = \
-                    DELAY * biasesgrad[l] + (1 - DELAY) * (posdCbydbiases[l] + negdCbydbiases[l]) / batch_size
+                    DELAY * biasesgrad[l] + (1 - DELAY) * (posdCbydbiases[l] + negdCbydbiases) / batch_size
                 model[l]['biases'] = model[l]['biases'] + epsgain * EPSILON * biasesgrad[l]
                 model[l]['weights'] += epsgain * EPSILON * (weightsgrad[l] - WC * model[l]['weights'])
 
