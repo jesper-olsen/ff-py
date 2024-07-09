@@ -94,24 +94,28 @@ def fftest(f_batch, batchdata, batchtargets, model):
         tests += len(guesses)
     return errors, tests
 
+def init_model(LAYERS,key):
+    model = [None]
+    for l, (fanin, fanout) in enumerate(zip(LAYERS[:-1], LAYERS[1:])):
+        key, subkey = random.split(key)
+        d = {'weights': (1/jnp.sqrt(fanin))*random.normal(subkey, (fanin, fanout), dtype=DTYPE),
+             'biases': jnp.zeros(fanout, dtype=DTYPE),
+             'supweights': jnp.zeros((fanout, LAYERS[-1]), dtype=DTYPE)
+            }
+        model.append(d)
+    return model, key
+
 def train(mnist_data, key):
     batch_size, idim, numbatches = mnist_data["batchdata"].shape
     print(f"Batchsize: {batch_size} Input-dim: {idim} #training batches: {numbatches}")
 
     LAYERS = [idim, 1000, 1000, 1000, NUMLAB]
     NLAYERS = len(LAYERS)
+    print("states per layer: ", LAYERS)
 
     # meanstates - running average of the mean activity of a hidden unit.
     meanstates = {l: 0.5 * jnp.ones(LAYERS[l], dtype=DTYPE) for l in range(1, NLAYERS - 1)}
-
-    model = [None]
-    for l, (fanin, fanout) in enumerate(zip(LAYERS[:-1], LAYERS[1:])):
-        key, subkey = random.split(key)
-        d = {'weights': (1/jnp.sqrt(fanin))*random.normal(subkey, (fanin, fanout), dtype=DTYPE),
-             'biases': jnp.zeros(fanout, dtype=DTYPE)}
-        if l < NLAYERS - 1:
-            d['supweights'] = jnp.zeros((fanout, LAYERS[-1]), dtype=DTYPE)
-        model.append(d)
+    model, key = init_model(LAYERS,key)
 
     # gradients of probability of correct real/fake decision w.r.t. weights & biases - smoothed over minibatches
     posdCbydweights = [None] * NLAYERS
@@ -122,14 +126,13 @@ def train(mnist_data, key):
     biasesgrad = [None] + [jnp.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1, NLAYERS - 1)]
     supweightsgrad = [None] + [jnp.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1, NLAYERS - 1)]
 
-    print("states per layer: ", LAYERS)
     MAXEPOCH = 125
     for epoch in range(0, MAXEPOCH):
+        # multiplier on all weight changes - decays linearly to zero after MAXEPOCH/2
+        epsgain = 1.0 if epoch<MAXEPOCH/2 else (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH 
         # number of times a negative example has higher goodness than the positive example
         pairsumerrs = collections.defaultdict(int)
         trainlogcost = 0.0
-        # multiplier on all weight changes - decays linearly to zero after MAXEPOCH/2
-        epsgain = 1.0 if epoch<MAXEPOCH/2 else (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH 
 
         for batch in range(numbatches):
             data = mnist_data["batchdata"][:, :, batch]  # 100x784
@@ -176,11 +179,11 @@ def train(mnist_data, key):
             sum_unnormlabprobs = jnp.sum(unnormlabprobs, axis=1, keepdims=True)
             trainpredictions = unnormlabprobs / jnp.tile( sum_unnormlabprobs, (1, LAYERS[-1]) )
             correctprobs = jnp.sum(trainpredictions * targets, axis=1)
-            trainlogcost += jnp.sum(-jnp.log(TINY+correctprobs))/numbatches # per batch (not per case)
+            trainlogcost += jnp.sum(-jnp.log(TINY+correctprobs))
 
-            trainguesses = jnp.argmax(trainpredictions, axis=1)
-            targetindices = jnp.argmax(targets, axis=1)
-            trainerrors = jnp.sum(trainguesses != targetindices)
+            #trainguesses = jnp.argmax(trainpredictions, axis=1)
+            #targetindices = jnp.argmax(targets, axis=1)
+            #trainerrors = jnp.sum(trainguesses != targetindices)
 
             dCbydin = targets - trainpredictions
             # dCbydbiases[-1] = np.sum(dCbydin[-1], axis=0)
@@ -224,6 +227,7 @@ def train(mnist_data, key):
                 # weights[l] = equicols(weights[l])
 
         if True:
+            trainlogcost/=numbatches 
             print(f"ep {epoch:3} gain {epsgain:.3f} trainlogcost {trainlogcost:.4f} PairwiseErrs:",
                 ", ".join([f"{pairsumerrs[l]}" for l in range(1,NLAYERS-1)]))
 
