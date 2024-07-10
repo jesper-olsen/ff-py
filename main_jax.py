@@ -69,7 +69,7 @@ def ffenergytest(data, model):
             if l >= MINLEVELENERGY:
                 actsumsq = actsumsq.at[:, lab].add(jnp.sum(states**2, axis=1))
     #return jnp.argmax(actsumsq, axis=1)  # guesses
-    return actsumsq, None
+    return actsumsq, None, None
 
 @jit
 def ffsoftmaxtest(data, model):
@@ -84,7 +84,7 @@ def ffsoftmaxtest(data, model):
     unnormlabprobs = jnp.exp(labin)
     predictions = unnormlabprobs / jnp.sum(unnormlabprobs, axis=1, keepdims=True)
     # logcost += -np.sum(targets * np.log(TINY + predictions)) / numbatches
-    return predictions, labin
+    return predictions, normstates, labin
     #return jnp.argmax(predictions, axis=1)  # guesses
 
 def fftest(f_batch, batchdata, batchtargets, model):
@@ -93,7 +93,7 @@ def fftest(f_batch, batchdata, batchtargets, model):
         data = batchdata[:, :, batch]
         targets = batchtargets[:, :, batch]
         targetindices = jnp.argmax(targets, axis=1)
-        predictions, _ = f_batch(data, model)
+        predictions, _, _ = f_batch(data, model)
         guesses = jnp.argmax(predictions, axis=1)  
         errors += jnp.sum(guesses != targetindices)
         tests += len(guesses)
@@ -165,20 +165,7 @@ def train(mnist_data, key):
             # NOW WE GET THE HIDDEN STATES WHEN THE LABEL IS NEUTRAL AND USE THE NORMALIZED HIDDEN STATES 
             # AS INPUTS TO A SOFTMAX.  THIS SOFTMAX IS USED TO PICK HARD NEGATIVE LABELS
 
-            ones_array = jnp.ones((batch_size, LAYERS[-1]), dtype=DTYPE) # dummy label in 1st 10 columns
-            data = data.at[:, :NUMLAB].set(LABELSTRENGTH * ones_array[:, :NUMLAB] / LAYERS[-1])
-            normstates = {0: ffnormrows(data)}
-            for l in range(1, NLAYERS - 1):
-                states, normstates[l] = layer_io(normstates[l-1], model[l])
-            labin = jnp.tile(model[NLAYERS - 1]['biases'], (batch_size, 1))
-            for l in range(MINLEVELSUP, NLAYERS - 1):
-                labin = labin+normstates[l] @ model[l]['supweights']
-                # normstates seems to work better than states for predicting the label
-            max_labin = jnp.max(labin, axis=1, keepdims=True)
-            labin = labin - jnp.tile(max_labin, (1, LAYERS[-1]))
-            unnormlabprobs = jnp.exp(labin)
-            sum_unnormlabprobs = jnp.sum(unnormlabprobs, axis=1, keepdims=True)
-            predictions = unnormlabprobs / jnp.tile( sum_unnormlabprobs, (1, LAYERS[-1]) )
+            predictions, normstates, labin = ffsoftmaxtest(data, model)
             correctprobs = jnp.sum(predictions * targets, axis=1)
             trainlogcost += jnp.sum(-jnp.log(TINY+correctprobs))
 
