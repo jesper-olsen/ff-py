@@ -141,10 +141,10 @@ def train(mnist_data, key):
             data = mnist_data["batchdata"][:, :, batch]  # 100x784
             targets = mnist_data["batchtargets"][:, :, batch]
             data = data.at[:, :NUMLAB].set(LABELSTRENGTH * targets)
-            normstates = {0: ffnormrows(data)}
             posprobs = [None] * NLAYERS  # column vector of probs that positive cases are positive.
-            negprobs = [None] * NLAYERS  # column vector of probs that negative cases are POSITIVE.
+            #negprobs = [None] * NLAYERS  # column vector of probs that negative cases are POSITIVE.
 
+            normstates = {0: ffnormrows(data)}
             for l in range(1, NLAYERS - 1):
                 states,normstates[l]=layer_io(normstates[l-1], model[l])
                 posprobs[l] = logistic((jnp.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP)
@@ -189,17 +189,18 @@ def train(mnist_data, key):
             key, subkey = random.split(key)
             chosen_labels = choosefrom(softmax(labinothers), subkey)
             negdata = data.at[:, :NUMLAB].set(LABELSTRENGTH * chosen_labels)
-            normstates = {0: ffnormrows(negdata)}
-
+            normstates_lm1 = ffnormrows(negdata)
             for l in range(1, NLAYERS - 1):
-                states, normstates[l] = layer_io(normstates[l-1], model[l])
+                states, normstates = layer_io(normstates_lm1, model[l])
                 # negprobs - probability of saying a negative case is POSITIVE.
-                negprobs[l] = logistic((jnp.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP)
-                dCbydin = -jnp.tile(negprobs[l], (1, LAYERS[l])) * states
-                pairsumerrs[l] += jnp.sum(negprobs[l] > posprobs[l])
+                #negprobs[l] = logistic((jnp.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP)
+                negprobs = logistic((jnp.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP)
+                dCbydin = -jnp.tile(negprobs, (1, LAYERS[l])) * states
+                pairsumerrs[l] += jnp.sum(negprobs > posprobs[l])
 
-                negdCbydweights = normstates[l - 1].T @ dCbydin
+                negdCbydweights = normstates_lm1.T @ dCbydin
                 negdCbydbiases = jnp.sum(dCbydin, axis=0)
+                normstates_lm1 = normstates
 
                 weightsgrad[l] = \
                     DELAY * weightsgrad[l] + (1 - DELAY) * (posdCbydweights[l] + negdCbydweights) / batch_size
