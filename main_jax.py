@@ -185,11 +185,10 @@ def train(mnist_data, key):
             # HACK: it works better without predicting the label from the first hidden layer.
 
             # NOW WE MAKE NEGDATA
-            negdata = data
             labinothers = (labin - 1000 * targets)  # big negative logits for the targets so we do not choose them
             key, subkey = random.split(key)
             chosen_labels = choosefrom(softmax(labinothers), subkey)
-            negdata = negdata.at[:, :NUMLAB].set(LABELSTRENGTH * chosen_labels)
+            negdata = data.at[:, :NUMLAB].set(LABELSTRENGTH * chosen_labels)
             normstates = {0: ffnormrows(negdata)}
 
             for l in range(1, NLAYERS - 1):
