@@ -142,17 +142,15 @@ def train(mnist_data, key):
             targets = mnist_data["batchtargets"][:, :, batch]
             data = data.at[:, :NUMLAB].set(LABELSTRENGTH * targets)
             posprobs = [None] * NLAYERS  # column vector of probs that positive cases are positive.
-            #negprobs = [None] * NLAYERS  # column vector of probs that negative cases are POSITIVE.
 
             normstates = {0: ffnormrows(data)}
             for l in range(1, NLAYERS - 1):
                 states,normstates[l]=layer_io(normstates[l-1], model[l])
                 posprobs[l] = logistic((jnp.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP)
-                replicated_states = jnp.repeat(1-posprobs[l], LAYERS[l]).reshape(-1, LAYERS[l])
                 # gradients of goodness w.r.t. total input to a hidden unit.
-                dCbydin = replicated_states * states  # Element-wise multiplication
+                dCbydin = jnp.tile(1-posprobs[l], (1, LAYERS[l])) * states  # Element-wise 
                 # wrong sign: rate at which it gets BETTER not worse. Think of C as goodness.
-                meanstates[l] = 0.9 * meanstates[l] + 0.1 * jnp.mean(states[l])  # Element-wise operations
+                meanstates[l] = 0.9 * meanstates[l] + 0.1 * jnp.mean(states[l])  # Element-wise
                 mean_meanstates = jnp.mean(meanstates[l])
                 dCbydin = dCbydin + LAMBDAMEAN * (mean_meanstates - meanstates[l])  
                 # This is a regularizer that encourages the average activity of a unit to match that for
@@ -193,7 +191,6 @@ def train(mnist_data, key):
             for l in range(1, NLAYERS - 1):
                 states, normstates = layer_io(normstates_lm1, model[l])
                 # negprobs - probability of saying a negative case is POSITIVE.
-                #negprobs[l] = logistic((jnp.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP)
                 negprobs = logistic((jnp.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP)
                 dCbydin = -jnp.tile(negprobs, (1, LAYERS[l])) * states
                 pairsumerrs[l] += jnp.sum(negprobs > posprobs[l])
