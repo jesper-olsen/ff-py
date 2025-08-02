@@ -26,7 +26,8 @@ DELAY = 0.9  #  used for smoothing the gradient over minibatches. 0.9 = 1 - 0.1
 def ffnormrows(a):
     # Makes every 'a' have a sum of squared activities that averages 1 per neuron.
     num_comp = a.shape[1]
-    return a / (TINY + jnp.sqrt(jnp.mean(a**2, axis=1, keepdims=True))) * jnp.ones((num_comp), dtype=DTYPE)
+    return a / (TINY + jnp.sqrt(jnp.mean(a**2, axis=1, keepdims=True)))
+    #return a / (TINY + jnp.sqrt(jnp.mean(a**2, axis=1, keepdims=True))) * jnp.ones((num_comp), dtype=DTYPE)
 
 @jit
 def choosefrom(probs, key):

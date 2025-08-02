@@ -241,6 +241,7 @@ if __name__ == "__main__":
     tr_errors, tr_tests = fftest(ffenergytest, data["batchdata"][:100], data["batchtargets"], model)
     te_errors, te_tests = fftest(ffenergytest, data["testbatchdata"][:100], data["testbatchtargets"], model)
     print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
+    tr_errors, tr_tests = fftest(ffsoftmaxtest, data["batchdata"][:100], data["batchtargets"], model)
     te_errors, te_tests = fftest(ffsoftmaxtest, data["testbatchdata"][:100], data["testbatchtargets"], model)
     print(f"Softmax-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
 
