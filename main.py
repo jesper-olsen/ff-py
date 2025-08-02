@@ -25,7 +25,7 @@ DELAY = 0.9  #  used for smoothing the gradient over minibatches. 0.9 = 1 - 0.1
 def ffnormrows(a):
     # Makes every 'a' have a sum of squared activities that averages 1 per neuron.
     num_comp = a.shape[1]
-    return ( a / (TINY + np.sqrt(np.mean(a**2, axis=1, keepdims=True))) * np.ones((num_comp), dtype=DTYPE))
+    return a / (TINY + np.sqrt(np.mean(a**2, axis=1, keepdims=True)))
 
 def choosefrom(probs):
     """vectorized - probabilistically choose neg examples that are more like the targets"""
@@ -219,7 +219,7 @@ def train(mnist_data):
                 # weights[l] = equicols(weights[l])
 
         if True:
-            print(f"ep {epoch:3} gain {epsgain:.3f} trainlogcost {trainlogcost:.4f} PairwiseErrs:",
+            print(f"ep: {epoch:3} gain: {epsgain:.3f} trainlogcost: {trainlogcost:.4f} PairwiseErrs:",
                 ", ".join([f"{pairsumerrs[l]}" for l in range(1,NLAYERS-1)]))
 
         if (epoch + 1) % 5 == 0:
