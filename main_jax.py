@@ -1,5 +1,5 @@
 import collections
-from jax import random, jit
+import jax
 from jax.scipy.special import expit as logistic # 1/(1+exp(-x))
 import jax.numpy as jnp
 import mnist
@@ -29,11 +29,11 @@ def ffnormrows(a):
     return a / (TINY + jnp.sqrt(jnp.mean(a**2, axis=1, keepdims=True)))
     #return a / (TINY + jnp.sqrt(jnp.mean(a**2, axis=1, keepdims=True))) * jnp.ones((num_comp), dtype=DTYPE)
 
-@jit
+@jax.jit
 def choosefrom(probs, key):
     """vectorized - probabilistically choose neg examples that are more like the targets"""
     batch_size, _ = probs.shape   # batch_size x nlabels
-    random_values = random.uniform(key, (batch_size, 1))
+    random_values = jax.random.uniform(key, (batch_size, 1))
     cumulative_probs = jnp.cumsum(probs, axis=1)
     chosen_labels = jnp.argmax(random_values < cumulative_probs, axis=1)
     postchoiceprobs = jnp.zeros_like(probs, dtype=DTYPE)
@@ -52,13 +52,13 @@ def rms(x) -> float:
     # Assumes x is a matrix, but should work for vectors and scalars too
     return jnp.sqrt(jnp.sum(x**2) / x.size)
 
-@jit
+@jax.jit
 def layer_io(vin, lmodel):
     states = jnp.maximum(0, vin @ lmodel['weights'] + lmodel['biases'])
     normstates = ffnormrows(states)
     return states,normstates
 
-@jit
+@jax.jit
 def ffenergytest(data, model):
     actsumsq = jnp.zeros((len(data), NUMLAB), dtype=DTYPE)
     for lab in range(NUMLAB):
@@ -72,7 +72,38 @@ def ffenergytest(data, model):
     #return jnp.argmax(actsumsq, axis=1)  # guesses
     return actsumsq, None, None
 
-@jit
+# Helper function that runs the forward pass for a single label index.
+# It's designed to be vmapped.
+def _energy_for_label_index(data, model, label_index):
+    # Create a one-hot vector for the given label index, e.g., index 2 -> [0,0,1,0...]
+    one_hot_label = jax.nn.one_hot(label_index, NUMLAB, dtype=DTYPE)
+    
+    # Broadcast this single label to the entire batch
+    label_vec = jnp.tile(one_hot_label, (len(data), 1))
+    
+    # Overlay the label vector onto the data
+    data_with_label = data.at[:, :NUMLAB].set(LABELSTRENGTH * label_vec)
+    
+    normstates_lm1 = ffnormrows(data_with_label)
+    goodness = jnp.zeros(len(data), dtype=DTYPE)
+    for l in range(1, len(model)):
+        states, normstates_lm1 = layer_io(normstates_lm1, model[l])
+        if l >= MINLEVELENERGY:
+            goodness += jnp.sum(states**2, axis=1)
+    return goodness
+
+@jax.jit
+def ffenergytest_vmapped(data, model):
+    # The axes to map over: don't map data, don't map model, map over the label indices
+    # jnp.arange(NUMLAB) is the array [0, 1, ..., 9]
+    all_goodness = jax.vmap(_energy_for_label_index, in_axes=(None, None, 0))(data, model, jnp.arange(NUMLAB))
+    
+    # The output of vmap will be shape (NUMLAB, batch_size). We need (batch_size, NUMLAB).
+    actsumsq = all_goodness.T
+    
+    return actsumsq, None, None
+
+@jax.jit
 def ffsoftmaxtest(data, model):
     data = data.at[:, :NUMLAB].set(LABELSTRENGTH * jnp.ones((len(data), NUMLAB), dtype=DTYPE) / NUMLAB)
     normstates = {0: ffnormrows(data)}
@@ -103,8 +134,8 @@ def fftest(f_batch, batchdata, batchtargets, model):
 def init_model(LAYERS,key):
     model = [None]
     for l, (fanin, fanout) in enumerate(zip(LAYERS[:-1], LAYERS[1:])):
-        key, subkey = random.split(key)
-        d = {'weights': (1/jnp.sqrt(fanin))*random.normal(subkey, (fanin, fanout), dtype=DTYPE),
+        key, subkey = jax.random.split(key)
+        d = {'weights': (1/jnp.sqrt(fanin))*jax.random.normal(subkey, (fanin, fanout), dtype=DTYPE),
              'biases': jnp.zeros(fanout, dtype=DTYPE),
              'supweights': jnp.zeros((fanout, LAYERS[-1]), dtype=DTYPE)
             }
@@ -185,7 +216,7 @@ def train(mnist_data, key):
 
             # NOW WE MAKE NEGDATA
             labinothers = (labin - 1000 * targets)  # big negative logits for the targets so we do not choose them
-            key, subkey = random.split(key)
+            key, subkey = jax.random.split(key)
             chosen_labels = choosefrom(softmax(labinothers), subkey)
             negdata = data.at[:, :NUMLAB].set(LABELSTRENGTH * chosen_labels)
             normstates_lm1 = ffnormrows(negdata)
@@ -217,8 +248,8 @@ def train(mnist_data, key):
                 ", ".join([f"{pairsumerrs[l]}" for l in range(1,NLAYERS-1)]))
 
         if (epoch + 1) % 5 == 0:
-            tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
-            verrors, vtests = fftest(ffenergytest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
+            tr_errors, tr_tests = fftest(ffenergytest_vmapped, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
+            verrors, vtests = fftest(ffenergytest_vmapped, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
             print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Valid {verrors}/{vtests}")
             verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
             print(f"Softmax-based errs: Valid {verrors}/{vtests}")
@@ -232,12 +263,12 @@ def convert_to_jax(data_dict):
     return {key: jnp.array(value) for key, value in data_dict.items()}
 
 if __name__ == "__main__":
-    key = random.PRNGKey(42)
+    key = jax.random.PRNGKey(42)
     data=mnist.make_batches("MNIST")
     data = convert_to_jax(data)
     model=train(data, key)
-    tr_errors, tr_tests = fftest(ffenergytest, data["batchdata"][:100], data["batchtargets"], model)
-    te_errors, te_tests = fftest(ffenergytest, data["testbatchdata"][:100], data["testbatchtargets"], model)
+    tr_errors, tr_tests = fftest(ffenergytest_vmapped, data["batchdata"][:100], data["batchtargets"], model)
+    te_errors, te_tests = fftest(ffenergytest_vmapped, data["testbatchdata"][:100], data["testbatchtargets"], model)
     print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
     te_errors, te_tests = fftest(ffsoftmaxtest, data["testbatchdata"][:100], data["testbatchtargets"], model)
     print(f"Softmax-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
