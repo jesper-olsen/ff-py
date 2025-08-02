@@ -39,10 +39,16 @@ Download MNIST - either [5] or [4]; Edit mnist.py if [4]:
 % cd ../..
 ```
 
+Install dependencies
+```
+% uv venv
+% uv pip install numpy jax matplotlib
+```
+
 Train a model - run either main.py (numpy version) or main_jax.py.
 
 ```
-% time python main.py
+% time uv run main.py
 Batchsize: 100 Input-dim: 784 #training batches: 500
 states per layer:  [784, 1000, 1000, 1000, 10]
 ep   0 gain 1.000 trainlogcost 61.8054 PairwiseErrs: 5921, 5906, 6414
