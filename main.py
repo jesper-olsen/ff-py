@@ -83,7 +83,7 @@ def ffsoftmaxtest(data, model):
 
 def fftest(f_batch, batchdata, batchtargets, model):
     errors = tests = 0
-    for batch in range(len(batchdata)):
+    for batch in range(batchdata.shape[2]):
         data = batchdata[:, :, batch]
         targets = batchtargets[:, :, batch]
         targetindices = np.argmax(targets, axis=1)
@@ -139,9 +139,7 @@ def train(mnist_data):
                 states,normstates[l]=layer_io(normstates[l-1], model[l])
                 posprobs[l] = logistic( (np.sum(states**2, axis=1, keepdims=True) - LAYERS[l]) / TEMP )
 
-                replicated_states = np.repeat(1-posprobs[l], LAYERS[l]).reshape(-1, LAYERS[l])
-                # gradients of goodness w.r.t. total input to a hidden unit.
-                dCbydin = replicated_states * states  # Element-wise multiplication
+                dCbydin = (1-posprobs[l]) * states # Element-wise multiplication
                 # wrong sign: rate at which it gets BETTER not worse. Think of C as goodness.
 
                 meanstates[l] = 0.9 * meanstates[l] + 0.1 * np.mean(states[l])  # Element-wise operations
@@ -238,10 +236,10 @@ if __name__ == "__main__":
     np.random.seed(1234)
     data=mnist.make_batches("MNIST")
     model=train(data)
-    tr_errors, tr_tests = fftest(ffenergytest, data["batchdata"][:100], data["batchtargets"], model)
-    te_errors, te_tests = fftest(ffenergytest, data["testbatchdata"][:100], data["testbatchtargets"], model)
+    tr_errors, tr_tests = fftest(ffenergytest, data["batchdata"], data["batchtargets"], model)
+    te_errors, te_tests = fftest(ffenergytest, data["testbatchdata"], data["testbatchtargets"], model)
     print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
-    tr_errors, tr_tests = fftest(ffsoftmaxtest, data["batchdata"][:100], data["batchtargets"], model)
-    te_errors, te_tests = fftest(ffsoftmaxtest, data["testbatchdata"][:100], data["testbatchtargets"], model)
+    tr_errors, tr_tests = fftest(ffsoftmaxtest, data["batchdata"], data["batchtargets"], model)
+    te_errors, te_tests = fftest(ffsoftmaxtest, data["testbatchdata"], data["testbatchtargets"], model)
     print(f"Softmax-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
 

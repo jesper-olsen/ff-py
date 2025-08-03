@@ -121,7 +121,7 @@ def ffsoftmaxtest(data, model):
 
 def fftest(f_batch, batchdata, batchtargets, model):
     errors = tests = 0
-    for batch in range(len(batchdata)):
+    for batch in range(batchdata.shape[2]):
         data = batchdata[:, :, batch]
         targets = batchtargets[:, :, batch]
         targetindices = jnp.argmax(targets, axis=1)
@@ -267,9 +267,10 @@ if __name__ == "__main__":
     data=mnist.make_batches("MNIST")
     data = convert_to_jax(data)
     model=train(data, key)
-    tr_errors, tr_tests = fftest(ffenergytest_vmapped, data["batchdata"][:100], data["batchtargets"], model)
-    te_errors, te_tests = fftest(ffenergytest_vmapped, data["testbatchdata"][:100], data["testbatchtargets"], model)
+    tr_errors, tr_tests = fftest(ffenergytest_vmapped, data["batchdata"], data["batchtargets"], model)
+    te_errors, te_tests = fftest(ffenergytest_vmapped, data["testbatchdata"], data["testbatchtargets"], model)
     print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
-    te_errors, te_tests = fftest(ffsoftmaxtest, data["testbatchdata"][:100], data["testbatchtargets"], model)
+    tr_errors, tr_tests = fftest(ffsoftmaxtest, data["batchdata"], data["batchtargets"], model)
+    te_errors, te_tests = fftest(ffsoftmaxtest, data["testbatchdata"], data["testbatchtargets"], model)
     print(f"Softmax-based errs: Train {tr_errors}/{tr_tests} Test {te_errors}/{te_tests}")
 
