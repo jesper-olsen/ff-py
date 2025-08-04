@@ -57,12 +57,13 @@ def layer_io(vin, lmodel):
 def ffenergytest(data, model):
     actsumsq = np.zeros((len(data), NUMLAB), dtype=DTYPE)
     for lab in range(NUMLAB):
-        data[:, :NUMLAB] = np.zeros((len(data), NUMLAB), dtype=DTYPE)
-        data[:, lab] = LABELSTRENGTH * np.ones(len(data), dtype=DTYPE)
-        normstates_lm1 = ffnormrows(data)
+        # data[:, :NUMLAB] = np.zeros((len(data), NUMLAB), dtype=DTYPE)
+        # data[:, lab] = LABELSTRENGTH * np.ones(len(data), dtype=DTYPE)
+        data[:, :NUMLAB] = 0
+        data[:, lab] = LABELSTRENGTH
+        normstates = ffnormrows(data)
         for l in range(1,len(model)):
-        #for l in range(1, NLAYERS - 1):
-            states,normstates_lm1 = layer_io(normstates_lm1, model[l])
+            states,normstates = layer_io(normstates, model[l])
             if l >= MINLEVELENERGY:
                 actsumsq[:, lab] += np.sum(states**2, axis=1)
     return np.argmax(actsumsq, axis=1) #guesses
@@ -142,7 +143,7 @@ def train(mnist_data):
                 dCbydin = (1-posprobs[l]) * states # Element-wise multiplication
                 # wrong sign: rate at which it gets BETTER not worse. Think of C as goodness.
 
-                meanstates[l] = 0.9 * meanstates[l] + 0.1 * np.mean(states[l])  # Element-wise operations
+                meanstates[l] = 0.9 * meanstates[l] + 0.1 * np.mean(states, axis=0)
                 mean_meanstates = np.mean(meanstates[l])
                 dCbydin = dCbydin + LAMBDAMEAN * (mean_meanstates - meanstates[l])  
                 # This is a regularizer that encourages the average activity of a unit to match that for
@@ -223,9 +224,10 @@ def train(mnist_data):
         if (epoch + 1) % 5 == 0:
             tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
             verrors, vtests = fftest(ffenergytest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
-            print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Valid {verrors}/{vtests}")
+            print(f"Energy-based errs; Train: {tr_errors}/{tr_tests} Valid: {verrors}/{vtests}")
+            tr_errors, tr_tests = fftest(ffsoftmaxtest, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
             verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
-            print(f"Softmax-based errs: Valid {verrors}/{vtests}")
+            print(f"Softmax-based errs; Train: {tr_errors}/{tr_tests} Valid: {verrors}/{vtests}")
             print("rms: ", ", ".join([f"{rms(model[l]['weights']):.4f}" for l in range(1, NLAYERS - 1)]))
             #print("rms: ", [rms(model[l]['weights']) for l in range(1, NLAYERS - 1)])
             print("suprms: ", ", ".join([f"{rms(model[l]['supweights']):.4f}" for l in range(MINLEVELSUP, NLAYERS - 1)]))

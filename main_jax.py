@@ -182,7 +182,7 @@ def train(mnist_data, key):
                 # gradients of goodness w.r.t. total input to a hidden unit.
                 dCbydin = jnp.tile(1-posprobs[l], (1, LAYERS[l])) * states  # Element-wise 
                 # wrong sign: rate at which it gets BETTER not worse. Think of C as goodness.
-                meanstates[l] = 0.9 * meanstates[l] + 0.1 * jnp.mean(states[l])  # Element-wise
+                meanstates[l] = 0.9 * meanstates[l] + 0.1 * jnp.mean(states, axis=0)
                 mean_meanstates = jnp.mean(meanstates[l])
                 dCbydin = dCbydin + LAMBDAMEAN * (mean_meanstates - meanstates[l])  
                 # This is a regularizer that encourages the average activity of a unit to match that for
@@ -250,9 +250,10 @@ def train(mnist_data, key):
         if (epoch + 1) % 5 == 0:
             tr_errors, tr_tests = fftest(ffenergytest_vmapped, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
             verrors, vtests = fftest(ffenergytest_vmapped, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
-            print(f"Energy-based errs: Train {tr_errors}/{tr_tests} Valid {verrors}/{vtests}")
+            print(f"Energy-based errs; Train: {tr_errors}/{tr_tests} Valid: {verrors}/{vtests}")
+            tr_errors, tr_tests = fftest(ffsoftmaxtest, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
             verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
-            print(f"Softmax-based errs: Valid {verrors}/{vtests}")
+            print(f"Softmax-based errs; Train: {tr_errors}/{tr_tests} Valid: {verrors}/{vtests}")
             print("rms: ", ", ".join([f"{rms(model[l]['weights']):.4f}" for l in range(1, NLAYERS - 1)]))
             #print("rms: ", [rms(model[l]['weights']) for l in range(1, NLAYERS - 1)])
             print("suprms: ", ", ".join([f"{rms(model[l]['supweights']):.4f}" for l in range(MINLEVELSUP, NLAYERS - 1)]))
