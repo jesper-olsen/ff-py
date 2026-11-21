@@ -32,15 +32,15 @@ def make_batches(path, dtype=np.float32):
     # Return training, validation and test sets.
     # Each set is shaped into batches of 100 images
     #images=read_images(path+"/raw/train-images-idx3-ubyte")/255.0
-    images=read_images(path+"/raw/train-images-idx3-ubyte").astype(dtype)/255.0
+    images=read_images(path+"/train-images-idx3-ubyte").astype(dtype)/255.0
     batchdata = images[0:50000]
     validbatchdata = images[50000:]
-    testbatchdata=read_images(path+"/raw/t10k-images-idx3-ubyte").astype(dtype)/255.0
+    testbatchdata=read_images(path+"/t10k-images-idx3-ubyte").astype(dtype)/255.0
     
-    labels=read_labels(path+"/raw/train-labels-idx1-ubyte") 
+    labels=read_labels(path+"/train-labels-idx1-ubyte") 
     batchtargets = labels_to_one_hot(labels[0:50000], dtype)
     validbatchtargets = labels_to_one_hot(labels[50000:], dtype)
-    labels=read_labels(path+"/raw/t10k-labels-idx1-ubyte") 
+    labels=read_labels(path+"/t10k-labels-idx1-ubyte") 
     testbatchtargets = labels_to_one_hot(labels, dtype)
 
     def reshape(a, n):
@@ -64,10 +64,10 @@ def show_image(image, label, index):
     plt.show()
  
 def test_raw():
-    image_file_path = 'MNIST/raw/train-images-idx3-ubyte'
-    label_file_path = 'MNIST/raw/train-labels-idx1-ubyte'
-    image_file_path = 'MNIST/raw/t10k-images-idx3-ubyte'
-    label_file_path = 'MNIST/raw/t10k-labels-idx1-ubyte'
+    image_file_path = 'MNIST/train-images-idx3-ubyte'
+    label_file_path = 'MNIST/train-labels-idx1-ubyte'
+    image_file_path = 'MNIST/t10k-images-idx3-ubyte'
+    label_file_path = 'MNIST/t10k-labels-idx1-ubyte'
     labels = read_labels(label_file_path)
     images = read_images(image_file_path)
 
