@@ -65,7 +65,7 @@ def ffenergytest(data, model):
         data = data.at[:, :NUMLAB].set(jnp.zeros((len(data), NUMLAB), dtype=DTYPE))
         data = data.at[:, lab].set(LABELSTRENGTH * jnp.ones(len(data), dtype=DTYPE))
         normstates_lm1 = ffnormrows(data)
-        for l in range(1, len(model)):
+        for l in range(1, len(model)-1):  # hidden layers only
             states, normstates_lm1 = layer_io(normstates_lm1, model[l])
             if l >= MINLEVELENERGY:
                 actsumsq = actsumsq.at[:, lab].add(jnp.sum(states**2, axis=1))
@@ -86,7 +86,7 @@ def _energy_for_label_index(data, model, label_index):
     
     normstates_lm1 = ffnormrows(data_with_label)
     goodness = jnp.zeros(len(data), dtype=DTYPE)
-    for l in range(1, len(model)):
+    for l in range(1, len(model)-1):  # hidden layers only
         states, normstates_lm1 = layer_io(normstates_lm1, model[l])
         if l >= MINLEVELENERGY:
             goodness += jnp.sum(states**2, axis=1)
@@ -107,10 +107,10 @@ def ffenergytest_vmapped(data, model):
 def ffsoftmaxtest(data, model):
     data = data.at[:, :NUMLAB].set(LABELSTRENGTH * jnp.ones((len(data), NUMLAB), dtype=DTYPE) / NUMLAB)
     normstates = {0: ffnormrows(data)}
-    for l in range(1, len(model)):
+    for l in range(1, len(model)-1):  # hidden layers only
         _, normstates[l] = layer_io(normstates[l-1], model[l])
     labin = jnp.tile(model[-1]['biases'], (len(data), 1))
-    for l in range(MINLEVELSUP, len(model)):
+    for l in range(MINLEVELSUP, len(model)-1):
         labin += normstates[l] @ model[l]['supweights']
     labin = labin - jnp.max(labin, axis=1, keepdims=True)
     unnormlabprobs = jnp.exp(labin)
@@ -161,7 +161,7 @@ def train(mnist_data, key):
     biasesgrad = [None] + [jnp.zeros((1, LAYERS[l]), dtype=DTYPE) for l in range(1, NLAYERS - 1)]
     supweightsgrad = [None] + [jnp.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1, NLAYERS - 1)]
 
-    MAXEPOCH = 125
+    MAXEPOCH = 100
     for epoch in range(0, MAXEPOCH):
         # multiplier on all weight changes - decays linearly to zero after MAXEPOCH/2
         epsgain = 1.0 if epoch<MAXEPOCH/2 else (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH 
@@ -248,11 +248,11 @@ def train(mnist_data, key):
                 ", ".join([f"{pairsumerrs[l]}" for l in range(1,NLAYERS-1)]))
 
         if (epoch + 1) % 5 == 0:
-            tr_errors, tr_tests = fftest(ffenergytest_vmapped, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
-            verrors, vtests = fftest(ffenergytest_vmapped, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
+            tr_errors, tr_tests = fftest(ffenergytest_vmapped, mnist_data["batchdata"][:, :, :100], mnist_data["batchtargets"], model)
+            verrors, vtests = fftest(ffenergytest_vmapped, mnist_data["validbatchdata"][:, :, :100], mnist_data["validbatchtargets"], model)
             print(f"Energy-based errs; Train: {tr_errors}/{tr_tests} Valid: {verrors}/{vtests}")
-            tr_errors, tr_tests = fftest(ffsoftmaxtest, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
-            verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
+            tr_errors, tr_tests = fftest(ffsoftmaxtest, mnist_data["batchdata"][:, :, :100], mnist_data["batchtargets"], model)
+            verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:, :, :100], mnist_data["validbatchtargets"], model)
             print(f"Softmax-based errs; Train: {tr_errors}/{tr_tests} Valid: {verrors}/{vtests}")
             print("rms: ", ", ".join([f"{rms(model[l]['weights']):.4f}" for l in range(1, NLAYERS - 1)]))
             #print("rms: ", [rms(model[l]['weights']) for l in range(1, NLAYERS - 1)])

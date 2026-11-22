@@ -62,7 +62,7 @@ def ffenergytest(data, model):
         data[:, :NUMLAB] = 0
         data[:, lab] = LABELSTRENGTH
         normstates = ffnormrows(data)
-        for l in range(1,len(model)):
+        for l in range(1,len(model)-1):  # hidden layers only
             states,normstates = layer_io(normstates, model[l])
             if l >= MINLEVELENERGY:
                 actsumsq[:, lab] += np.sum(states**2, axis=1)
@@ -71,10 +71,10 @@ def ffenergytest(data, model):
 def ffsoftmaxtest(data, model):
     data[:, :NUMLAB] = LABELSTRENGTH * np.ones((len(data), NUMLAB),dtype=DTYPE) / NUMLAB
     normstates = {0: ffnormrows(data)}
-    for l in range(1,len(model)):
+    for l in range(1,len(model)-1):  # hidden layers only
         _, normstates[l] = layer_io(normstates[l-1], model[l])
     labin = np.tile(model[-1]['biases'], (len(data), 1))
-    for l in range(MINLEVELSUP, len(model)):
+    for l in range(MINLEVELSUP, len(model)-1):
         labin += normstates[l] @ model[l]['supweights']
     labin -= np.max(labin, axis=1, keepdims=True)
     unnormlabprobs = np.exp(labin)
@@ -85,7 +85,7 @@ def ffsoftmaxtest(data, model):
 def fftest(f_batch, batchdata, batchtargets, model):
     errors = tests = 0
     for batch in range(batchdata.shape[2]):
-        data = batchdata[:, :, batch]
+        data = batchdata[:, :, batch].copy()  # test functions overwrite the label columns
         targets = batchtargets[:, :, batch]
         targetindices = np.argmax(targets, axis=1)
         guesses = f_batch(data, model)
@@ -121,7 +121,7 @@ def train(mnist_data):
     supweightsgrad = [None]+[np.zeros((LAYERS[l], LAYERS[-1]), dtype=DTYPE) for l in range(1,NLAYERS-1)]
 
     print("states per layer: ", LAYERS)
-    MAXEPOCH = 125
+    MAXEPOCH = 100
     for epoch in range(0, MAXEPOCH):
         # number of times a negative example has higher goodness than the positive example
         pairsumerrs = collections.defaultdict(int)
@@ -130,7 +130,7 @@ def train(mnist_data):
         epsgain = 1.0 if epoch<MAXEPOCH/2 else (1.0 + 2.0 * (MAXEPOCH - epoch)) / MAXEPOCH
 
         for batch in range(numbatches):
-            data = mnist_data["batchdata"][:, :, batch]  # 100x784
+            data = mnist_data["batchdata"][:, :, batch].copy()  # 100x784; copy - label columns are overwritten below
             targets = mnist_data["batchtargets"][:, :, batch]
             data[:, :NUMLAB] = LABELSTRENGTH * targets
             normstates = {0: ffnormrows(data)}
@@ -222,11 +222,11 @@ def train(mnist_data):
                 ", ".join([f"{pairsumerrs[l]}" for l in range(1,NLAYERS-1)]))
 
         if (epoch + 1) % 5 == 0:
-            tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
-            verrors, vtests = fftest(ffenergytest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
+            tr_errors, tr_tests = fftest(ffenergytest, mnist_data["batchdata"][:, :, :100], mnist_data["batchtargets"], model)
+            verrors, vtests = fftest(ffenergytest, mnist_data["validbatchdata"][:, :, :100], mnist_data["validbatchtargets"], model)
             print(f"Energy-based errs; Train: {tr_errors}/{tr_tests} Valid: {verrors}/{vtests}")
-            tr_errors, tr_tests = fftest(ffsoftmaxtest, mnist_data["batchdata"][:100], mnist_data["batchtargets"], model)
-            verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:100], mnist_data["validbatchtargets"], model)
+            tr_errors, tr_tests = fftest(ffsoftmaxtest, mnist_data["batchdata"][:, :, :100], mnist_data["batchtargets"], model)
+            verrors, vtests = fftest(ffsoftmaxtest, mnist_data["validbatchdata"][:, :, :100], mnist_data["validbatchtargets"], model)
             print(f"Softmax-based errs; Train: {tr_errors}/{tr_tests} Valid: {verrors}/{vtests}")
             print("rms: ", ", ".join([f"{rms(model[l]['weights']):.4f}" for l in range(1, NLAYERS - 1)]))
             #print("rms: ", [rms(model[l]['weights']) for l in range(1, NLAYERS - 1)])
